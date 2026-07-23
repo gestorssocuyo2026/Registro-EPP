@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Registro de Entrega de EPP — CBC Cuyotenango</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- Firebase (modular SDK — required to connect to the named "us-central" Firestore database) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+  :root{
+    --navy:#0B2540; --blue:#0F5FA6; --blue-dark:#0A4478; --amber:#F0A030;
+    --bg:#F5F6F8; --card:#FFFFFF; --line:#E2E6EB; --text:#1B2733; --muted:#6B7785;
+    --green:#2E7D5B; --green-bg:#E7F3ED; --red:#C0453D; --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);font-family:'Inter',sans-serif;color:var(--text);-webkit-font-smoothing:antialiased;}
+  .phone{max-width:430px;margin:0 auto;min-height:100vh;background:var(--bg);position:relative;padding-bottom:110px;}
+
+  /* ---- Login ---- */
+  .login-screen{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:32px 26px;background:linear-gradient(160deg,var(--navy),var(--blue-dark));}
+  .login-card{background:#fff;border-radius:18px;padding:28px 22px;}
+  .login-logo{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);text-align:center;margin-bottom:4px;}
+  .login-title{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:26px;text-align:center;color:var(--navy);margin:0 0 20px;}
+  .login-card label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:14px 0 6px;}
+  .login-card input{width:100%;padding:12px;border:1.5px solid var(--line);border-radius:10px;font-size:14.5px;}
+  .login-btn{width:100%;margin-top:20px;padding:14px;border:none;border-radius:12px;background:var(--blue);color:#fff;font-weight:700;font-size:14.5px;font-family:'Inter',sans-serif;}
+  .login-error{color:var(--red);font-size:12.5px;text-align:center;margin-top:12px;display:none;}
+
+  /* ---- Top bar ---- */
+  .topbar{background:linear-gradient(135deg,var(--navy),var(--blue-dark));color:#fff;padding:20px 20px 16px;position:relative;overflow:hidden;}
+  .topbar::after{content:"";position:absolute;right:-30px;top:-30px;width:130px;height:130px;background:repeating-linear-gradient(45deg,var(--amber) 0 10px,transparent 10px 20px);opacity:.18;border-radius:50%;}
+  .brand-row{display:flex;align-items:center;justify-content:space-between;position:relative;z-index:1;}
+  .brand-tag{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);}
+  .user-pill{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);padding:5px 10px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;}
+  h1{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:24px;margin:8px 0 2px;position:relative;z-index:1;}
+  .subtitle{font-size:12.5px;color:rgba(255,255,255,.75);margin:0;position:relative;z-index:1;}
+
+  .tabs{display:flex;gap:8px;padding:14px 20px 0;}
+  .tab{flex:1;text-align:center;padding:9px 4px;border-radius:10px;font-size:12px;font-weight:700;color:var(--muted);background:#EEF1F4;}
+  .tab.active{background:var(--blue);color:#fff;}
+
+  .content{padding:16px 20px 0;}
+  .card{background:var(--card);border-radius:var(--radius);padding:18px 16px;border:1px solid var(--line);margin-bottom:14px;}
+  .card-title{display:flex;align-items:center;gap:8px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;margin:0 0 14px;color:var(--navy);}
+  .badge-num{width:22px;height:22px;background:var(--blue);color:#fff;border-radius:50%;font-size:12px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;}
+
+  label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:12px 0 6px;}
+  label:first-of-type{margin-top:0;}
+  input, select, textarea{width:100%;padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:14.5px;font-family:'Inter',sans-serif;color:var(--text);background:#FCFCFD;}
+  input:focus, select:focus{outline:none;border-color:var(--blue);background:#fff;}
+  input:disabled{background:#F1F3F5;color:var(--muted);}
+
+  .seg{display:flex;background:#EEF1F4;border-radius:10px;padding:3px;gap:3px;}
+  .seg button{flex:1;border:none;background:transparent;padding:9px 4px;border-radius:8px;font-size:12.5px;font-weight:600;color:var(--muted);font-family:'Inter',sans-serif;}
+  .seg button.active{background:var(--blue);color:#fff;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+
+  .item{border:1.5px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;}
+  .item-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .item-tag{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--blue-dark);background:#E8F1FA;padding:3px 8px;border-radius:6px;}
+  .remove-btn{background:none;border:none;color:var(--red);font-size:12px;font-weight:600;font-family:'Inter',sans-serif;}
+  .add-item{width:100%;padding:12px;border:1.5px dashed var(--blue);border-radius:10px;background:#F3F8FD;color:var(--blue-dark);font-weight:600;font-size:13.5px;font-family:'Inter',sans-serif;}
+
+  .chips{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{padding:7px 12px;border-radius:20px;border:1.5px solid var(--line);font-size:12px;font-weight:600;color:var(--muted);background:#fff;}
+  .chip.active{border-color:var(--blue);background:var(--blue);color:#fff;}
+
+  .doc-box{background:#FBF7ED;border:1px solid #EDDCAE;border-radius:12px;padding:14px;font-size:12.5px;line-height:1.55;color:#5A4A20;max-height:140px;overflow-y:auto;margin-bottom:12px;}
+  .doc-box strong{display:block;margin-bottom:6px;color:#7A5F14;}
+  .check-row{display:flex;align-items:flex-start;gap:10px;background:#F3F8FD;border:1px solid #D9E9F7;border-radius:10px;padding:12px;margin-bottom:14px;}
+  .check-row input{width:auto;margin-top:2px;}
+  .check-row span{font-size:12.5px;color:var(--navy);font-weight:500;line-height:1.4;}
+
+  canvas.sig-pad{border:1.5px dashed var(--line);border-radius:12px;background:#fff;width:100%;height:150px;touch-action:none;display:block;}
+  .sig-actions{display:flex;justify-content:space-between;margin-top:8px;}
+  .sig-actions button{background:none;border:none;color:var(--blue-dark);font-size:12px;font-weight:600;font-family:'Inter',sans-serif;}
+
+  .bottom-nav{position:fixed;bottom:0;left:0;right:0;max-width:430px;margin:0 auto;background:#fff;border-top:1px solid var(--line);padding:12px 20px calc(14px + env(safe-area-inset-bottom));display:flex;gap:10px;}
+  .btn{flex:1;padding:14px;border-radius:12px;border:none;font-family:'Inter',sans-serif;font-weight:700;font-size:14px;}
+  .btn-secondary{background:#EEF1F4;color:var(--navy);}
+  .btn-primary{background:var(--blue);color:#fff;}
+  .btn-primary:disabled{background:#A9C6DE;}
+
+  .toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;font-weight:600;opacity:0;transition:opacity .25s;pointer-events:none;z-index:50;}
+  .toast.show{opacity:1;}
+
+  .hidden{display:none !important;}
+
+  /* Master panel */
+  .catalog-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);}
+  .catalog-row:last-child{border-bottom:none;}
+  .catalog-info{font-size:13px;}
+  .catalog-info .name{font-weight:600;color:var(--navy);}
+  .catalog-info .meta{color:var(--muted);font-size:11.5px;}
+  .catalog-price{font-weight:700;color:var(--blue-dark);font-size:13px;}
+</style>
+</head>
+<body>
+
+<!-- ===================== LOGIN ===================== -->
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <div class="login-logo">SSO · Cuyotenango</div>
+    <div class="login-title">Registro de EPP</div>
+    <label>Correo</label>
+    <input type="email" id="loginEmail" placeholder="tucorreo@cbc.co">
+    <label>Contraseña</label>
+    <input type="password" id="loginPass" placeholder="••••••••">
+    <button class="login-btn" id="loginBtn">Ingresar</button>
+    <div class="login-error" id="loginError">Correo o contraseña incorrectos.</div>
+  </div>
+</div>
+
+<!-- ===================== APP ===================== -->
+<div class="phone hidden" id="appScreen">
+
+  <div class="topbar">
+    <div class="brand-row">
+      <span class="brand-tag">SSO · Cuyotenango</span>
+      <span class="user-pill" id="userPill">👤 —</span>
+    </div>
+    <h1>Registro de EPP</h1>
+    <p class="subtitle">Entregas y préstamos de equipo de protección</p>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" id="tabRegistro">Registrar</div>
+    <div class="tab hidden" id="tabCatalogo">Catálogo</div>
+    <div class="tab hidden" id="tabPersonal">Personal</div>
+  </div>
+
+  <!-- ---------- REGISTRO ---------- -->
+  <div class="content" id="viewRegistro">
+
+    <div class="card">
+      <div class="card-title"><span class="badge-num">1</span> Datos del trabajador</div>
+      <label>Tipo de persona</label>
+      <div class="seg" id="tipoPersonaSeg">
+        <button class="active" data-val="planta">Personal de planta</button>
+        <button data-val="tercero">Tercero</button>
+      </div>
+
+      <div id="plantaFields">
+        <label>Trabajador</label>
+        <input type="text" id="trabajadorSearch" placeholder="Buscar por nombre o ID...">
+        <div id="trabajadorResults" style="font-size:12.5px;color:var(--muted);margin-top:4px;"></div>
+        <div class="row2">
+          <div><label>Área</label><input type="text" id="trabajadorArea" disabled></div>
+          <div><label>ID trabajador</label><input type="text" id="trabajadorId" disabled></div>
+        </div>
+      </div>
+
+      <div id="terceroFields" class="hidden">
+        <label>Nombre completo</label>
+        <input type="text" id="terceroNombre" placeholder="Nombre del tercero">
+        <label>Empresa / motivo de visita</label>
+        <input type="text" id="terceroEmpresa" placeholder="Ej. Contratista eléctrico">
+        <label>Foto de documento de identificación</label>
+        <input type="file" id="terceroFoto" accept="image/*" capture="environment">
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="badge-num">2</span> Tipo de movimiento</div>
+      <div class="seg" id="tipoMovSeg">
+        <button class="active" data-val="entrega">Entrega</button>
+        <button data-val="prestamo">Préstamo</button>
+      </div>
+      <label>Motivo</label>
+      <div class="chips" id="motivoChips">
+        <div class="chip active" data-val="Nuevo ingreso">Nuevo ingreso</div>
+        <div class="chip" data-val="Reposición por daño">Reposición · daño</div>
+        <div class="chip" data-val="Reposición por desgaste">Reposición · desgaste</div>
+        <div class="chip" data-val="Reposición por pérdida">Reposición · pérdida</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="badge-num">3</span> Equipo a entregar</div>
+      <div id="itemList"></div>
+      <button class="add-item" id="addItemBtn">+ Agregar artículo</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="badge-num">4</span> Carta compromiso</div>
+      <div class="doc-box">
+        <strong>Uso y cuidado del EPP</strong>
+        Declaro haber recibido el equipo de protección personal detallado en este registro y me comprometo a usarlo correctamente durante mi jornada laboral, así como a cuidarlo y mantenerlo en buen estado, conforme al Reglamento de Salud y Seguridad Ocupacional vigente (Acuerdo Gubernativo 229-2014). Entiendo que dañar, destruir o negarme a usarlo constituye una falta a mis obligaciones, y que solicitudes de reposición no justificadas por desgaste normal pueden derivar en medidas disciplinarias según el Reglamento Interno de Trabajo.
+      </div>
+      <div class="check-row">
+        <input type="checkbox" id="aceptaCheck">
+        <span>El trabajador leyó y acepta el compromiso de uso y cuidado del equipo entregado.</span>
+      </div>
+
+      <label>Firma del trabajador</label>
+      <canvas id="sigPad" class="sig-pad"></canvas>
+      <div class="sig-actions">
+        <button id="clearSigBtn">↺ Borrar firma</button>
+        <span id="sigStatus" style="font-size:11px;color:var(--muted);font-weight:700;">Sin firmar</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ---------- CATALOGO (solo maestro) ---------- -->
+  <div class="content hidden" id="viewCatalogo">
+    <div class="card">
+      <div class="card-title">➕ Agregar artículo</div>
+      <label>Nombre</label>
+      <input type="text" id="catNombre" placeholder="Ej. Guantes de nitrilo">
+      <div class="row2">
+        <div>
+          <label>Tipo de protección</label>
+          <select id="catTipo">
+            <option>AUDITIVA</option><option>OCULAR</option><option>MANOS</option>
+            <option>PIES</option><option>RESPIRATORIA</option><option>CABEZA</option><option>CUERPO</option>
+          </select>
+        </div>
+        <div><label>Costo unitario (Q)</label><input type="number" id="catCosto" placeholder="0.00"></div>
+      </div>
+      <label>Tallas disponibles (separadas por coma, o "Única")</label>
+      <input type="text" id="catTallas" placeholder="S, M, L, XL">
+      <button class="add-item" id="addCatBtn" style="margin-top:14px;">Guardar artículo</button>
+    </div>
+    <div class="card">
+      <div class="card-title">Catálogo actual</div>
+      <div id="catalogoList" style="font-size:13px;color:var(--muted);">Cargando...</div>
+    </div>
+  </div>
+
+  <!-- ---------- PERSONAL (solo maestro) ---------- -->
+  <div class="content hidden" id="viewPersonal">
+    <div class="card">
+      <div class="card-title">📋 Importar / actualizar personal</div>
+      <p style="font-size:12.5px;color:var(--muted);line-height:1.5;margin-top:0;">
+        Sube el Excel de personal (hoja "Control", con columnas Código/DPI, Nombre, Apellido y Área).
+        Se excluyen automáticamente las filas con área en blanco o que contengan "SUSPENDIDO".
+        Cada vez que subas un archivo nuevo, la lista completa se reemplaza por la del archivo.
+      </p>
+      <label>Archivo Excel (.xlsx)</label>
+      <input type="file" id="personalFile" accept=".xlsx,.xls">
+      <button class="add-item" id="importPersonalBtn" style="margin-top:14px;">Importar y sincronizar</button>
+      <p id="importStatus" style="font-size:12.5px;color:var(--blue-dark);font-weight:600;margin-bottom:0;"></p>
+    </div>
+    <div class="card">
+      <div class="card-title">Personal cargado actualmente</div>
+      <div id="personalCount" style="font-size:13px;color:var(--muted);">Cargando...</div>
+    </div>
+  </div>
+
+  <div class="bottom-nav" id="bottomNavRegistro">
+    <button class="btn btn-secondary" id="logoutBtn">Salir</button>
+    <button class="btn btn-primary" id="saveBtn">Guardar entrega</button>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  getFirestore, collection, doc, getDoc, getDocs, addDoc, setDoc, deleteDoc,
+  writeBatch, query, orderBy, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+/* ======================= FIREBASE INIT ======================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyCluOTp-r7vjAE4VSNj3YXc9TLHJMnZBto",
+  authDomain: "dashboard-cbc-32bd8.firebaseapp.com",
+  projectId: "dashboard-cbc-32bd8",
+  storageBucket: "dashboard-cbc-32bd8.firebasestorage.app",
+  messagingSenderId: "633122117913",
+  appId: "1:633122117913:web:a5cbb616090903d5c18d88"
+};
+const fbApp = initializeApp(firebaseConfig);
+const auth = getAuth(fbApp);
+// Este proyecto usa una base de datos Firestore con nombre "us-central" (no la "(default)") — hay que indicarlo explícitamente
+const db = getFirestore(fbApp, 'us-central');
+
+/* ======================= STATE ======================= */
+let currentUser = null;
+let currentRole = null; // "maestro" | "registrador"
+let personalCache = [];
+let catalogoCache = [];
+let selectedTrabajador = null;
+let itemCount = 0;
+
+/* ======================= AUTH ======================= */
+document.getElementById('loginBtn').addEventListener('click', () => {
+  const email = document.getElementById('loginEmail').value.trim();
+  const pass = document.getElementById('loginPass').value;
+  document.getElementById('loginError').style.display = 'none';
+  signInWithEmailAndPassword(auth, email, pass).catch(err => {
+    document.getElementById('loginError').textContent = 'Error: ' + err.message;
+    document.getElementById('loginError').style.display = 'block';
+  });
+});
+
+document.getElementById('logoutBtn').addEventListener('click', () => signOut(auth));
+
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    currentUser = user;
+    // Look up role from /usuarios/{uid}
+    try {
+      const roleSnap = await getDoc(doc(db, 'usuarios', user.uid));
+      currentRole = roleSnap.exists() ? (roleSnap.data().role || 'registrador') : 'registrador';
+    } catch (e) {
+      currentRole = 'registrador';
+    }
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('appScreen').classList.remove('hidden');
+    document.getElementById('userPill').textContent = '👤 ' + (currentRole === 'maestro' ? 'Maestro' : 'Registro') ;
+    if (currentRole === 'maestro') {
+      document.getElementById('tabCatalogo').classList.remove('hidden');
+      document.getElementById('tabPersonal').classList.remove('hidden');
+      cargarCatalogoAdmin();
+      cargarConteoPersonal();
+    }
+    cargarPersonal();
+    cargarCatalogoParaItems();
+  } else {
+    currentUser = null;
+    document.getElementById('loginScreen').classList.remove('hidden');
+    document.getElementById('appScreen').classList.add('hidden');
+  }
+});
+
+/* ======================= TABS ======================= */
+document.getElementById('tabRegistro').addEventListener('click', () => switchTab('registro'));
+document.getElementById('tabCatalogo').addEventListener('click', () => switchTab('catalogo'));
+document.getElementById('tabPersonal').addEventListener('click', () => switchTab('personal'));
+function switchTab(tab){
+  document.getElementById('tabRegistro').classList.toggle('active', tab==='registro');
+  document.getElementById('tabCatalogo').classList.toggle('active', tab==='catalogo');
+  document.getElementById('tabPersonal').classList.toggle('active', tab==='personal');
+  document.getElementById('viewRegistro').classList.toggle('hidden', tab!=='registro');
+  document.getElementById('viewCatalogo').classList.toggle('hidden', tab!=='catalogo');
+  document.getElementById('viewPersonal').classList.toggle('hidden', tab!=='personal');
+  document.getElementById('bottomNavRegistro').classList.toggle('hidden', tab!=='registro');
+}
+
+/* ======================= TIPO PERSONA / MOVIMIENTO / MOTIVO ======================= */
+function setupSeg(segId, onChange){
+  const seg = document.getElementById(segId);
+  seg.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      seg.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      onChange(btn.dataset.val);
+    });
+  });
+}
+setupSeg('tipoPersonaSeg', (val) => {
+  document.getElementById('plantaFields').classList.toggle('hidden', val==='tercero');
+  document.getElementById('terceroFields').classList.toggle('hidden', val!=='tercero');
+});
+setupSeg('tipoMovSeg', () => {});
+
+document.getElementById('motivoChips').addEventListener('click', (e) => {
+  if (!e.target.classList.contains('chip')) return;
+  document.querySelectorAll('#motivoChips .chip').forEach(c => c.classList.remove('active'));
+  e.target.classList.add('active');
+});
+
+/* ======================= PERSONAL (búsqueda) ======================= */
+async function cargarPersonal(){
+  try {
+    const snap = await getDocs(collection(db, 'personal'));
+    personalCache = snap.docs.map(d => ({id: d.id, ...d.data()}));
+  } catch(e){ console.error('Error cargando personal', e); }
+}
+document.getElementById('trabajadorSearch').addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase().trim();
+  const box = document.getElementById('trabajadorResults');
+  selectedTrabajador = null;
+  document.getElementById('trabajadorArea').value = '';
+  document.getElementById('trabajadorId').value = '';
+  if (q.length < 2) { box.innerHTML = ''; return; }
+  const matches = personalCache.filter(p =>
+    (p.nombre||'').toLowerCase().includes(q) || (p.id_trabajador||'').toLowerCase().includes(q)
+  ).slice(0,5);
+  box.innerHTML = matches.map(m =>
+    `<div style="padding:6px 4px;cursor:pointer;" data-id="${m.id}">${m.id_trabajador} — ${m.nombre} (${m.area})</div>`
+  ).join('') || '<div style="padding:4px;">Sin coincidencias</div>';
+  box.querySelectorAll('[data-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      const p = personalCache.find(x => x.id === el.dataset.id);
+      selectedTrabajador = p;
+      document.getElementById('trabajadorSearch').value = p.nombre;
+      document.getElementById('trabajadorArea').value = p.area;
+      document.getElementById('trabajadorId').value = p.id_trabajador;
+      box.innerHTML = '';
+    });
+  });
+});
+
+/* ======================= CATALOGO (para selects de items) ======================= */
+async function cargarCatalogoParaItems(){
+  try {
+    const snap = await getDocs(collection(db, 'catalogo_epp'));
+    catalogoCache = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    if (itemCount === 0) addItemRow();
+  } catch(e){ console.error('Error cargando catálogo', e); }
+}
+
+function addItemRow(){
+  itemCount++;
+  const id = 'item_' + itemCount;
+  const div = document.createElement('div');
+  div.className = 'item';
+  div.id = id;
+  const options = catalogoCache.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+  div.innerHTML = `
+    <div class="item-top">
+      <span class="item-tag" id="${id}_tag">—</span>
+      <button class="remove-btn" onclick="document.getElementById('${id}').remove()">Quitar</button>
+    </div>
+    <label style="margin-top:0;">Artículo</label>
+    <select id="${id}_articulo">${options || '<option value="">Cargando catálogo...</option>'}</select>
+    <div class="row2">
+      <div><label>Talla</label><select id="${id}_talla"></select></div>
+      <div><label>Cantidad</label><input type="number" id="${id}_cantidad" value="1" min="1"></div>
+    </div>`;
+  document.getElementById('itemList').appendChild(div);
+
+  const artSel = div.querySelector(`#${id}_articulo`);
+  const tallaSel = div.querySelector(`#${id}_talla`);
+  const tag = div.querySelector(`#${id}_tag`);
+  function refreshTallas(){
+    const cat = catalogoCache.find(c => c.id === artSel.value);
+    tag.textContent = cat ? cat.tipo_proteccion : '—';
+    const tallas = cat && cat.tallas ? cat.tallas : ['Única'];
+    tallaSel.innerHTML = tallas.map(t => `<option>${t}</option>`).join('');
+  }
+  artSel.addEventListener('change', refreshTallas);
+  refreshTallas();
+}
+document.getElementById('addItemBtn').addEventListener('click', addItemRow);
+
+/* ======================= FIRMA (canvas) ======================= */
+const canvas = document.getElementById('sigPad');
+const ctx = canvas.getContext('2d');
+let drawing = false, hasSig = false;
+function resizeCanvas(){
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = canvas.offsetWidth * ratio;
+  canvas.height = canvas.offsetHeight * ratio;
+  ctx.scale(ratio, ratio);
+  ctx.strokeStyle = '#0A4478';
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = 'round';
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+function getPos(e){
+  const rect = canvas.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  return {x: t.clientX - rect.left, y: t.clientY - rect.top};
+}
+function startDraw(e){ drawing = true; hasSig = true; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); updateSigStatus(); e.preventDefault(); }
+function moveDraw(e){ if(!drawing) return; const p = getPos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); e.preventDefault(); }
+function endDraw(){ drawing = false; }
+canvas.addEventListener('mousedown', startDraw);
+canvas.addEventListener('mousemove', moveDraw);
+window.addEventListener('mouseup', endDraw);
+canvas.addEventListener('touchstart', startDraw);
+canvas.addEventListener('touchmove', moveDraw);
+canvas.addEventListener('touchend', endDraw);
+
+document.getElementById('clearSigBtn').addEventListener('click', () => {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  hasSig = false;
+  updateSigStatus();
+});
+function updateSigStatus(){
+  const el = document.getElementById('sigStatus');
+  el.textContent = hasSig ? '✓ Firma capturada' : 'Sin firmar';
+  el.style.color = hasSig ? 'var(--green)' : 'var(--muted)';
+}
+
+/* ======================= COMPRESIÓN DE FOTO (para guardar en Firestore, sin Storage) ======================= */
+function compressImageToDataURL(file, maxWidth = 900, quality = 0.6) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (e) => { img.src = e.target.result; };
+    reader.onerror = reject;
+    img.onload = () => {
+      const scale = Math.min(1, maxWidth / img.width);
+      const w = img.width * scale, h = img.height * scale;
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(c.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ======================= GUARDAR ENTREGA ======================= */
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  const tipoPersona = document.querySelector('#tipoPersonaSeg button.active').dataset.val;
+  const tipoMov = document.querySelector('#tipoMovSeg button.active').dataset.val;
+  const motivo = document.querySelector('#motivoChips .chip.active')?.dataset.val;
+
+  if (tipoPersona === 'planta' && !selectedTrabajador) {
+    return showToast('Selecciona un trabajador de la lista');
+  }
+  if (tipoPersona === 'tercero' && !document.getElementById('terceroNombre').value.trim()) {
+    return showToast('Ingresa el nombre del tercero');
+  }
+  if (!document.getElementById('aceptaCheck').checked) {
+    return showToast('El trabajador debe aceptar el compromiso');
+  }
+  if (!hasSig) {
+    return showToast('Falta la firma del trabajador');
+  }
+
+  const items = [];
+  document.querySelectorAll('#itemList .item').forEach(div => {
+    const artSel = div.querySelector('select[id$="_articulo"]');
+    const tallaSel = div.querySelector('select[id$="_talla"]');
+    const cantInput = div.querySelector('input[id$="_cantidad"]');
+    const cat = catalogoCache.find(c => c.id === artSel.value);
+    items.push({
+      epp_id: artSel.value,
+      nombre: cat ? cat.nombre : '',
+      tipo_proteccion: cat ? cat.tipo_proteccion : '',
+      costo_unitario: cat ? cat.costo_unitario : 0,
+      talla: tallaSel.value,
+      cantidad: parseInt(cantInput.value || '1', 10)
+    });
+  });
+  if (items.length === 0) return showToast('Agrega al menos un artículo');
+
+  document.getElementById('saveBtn').disabled = true;
+  document.getElementById('saveBtn').textContent = 'Guardando...';
+
+  try {
+    // Firma: se guarda como imagen comprimida directo en el documento (sin Storage, para evitar el plan de pago)
+    const firmaBase64 = canvas.toDataURL('image/png');
+
+    let fotoBase64 = null;
+    if (tipoPersona === 'tercero') {
+      const fotoFile = document.getElementById('terceroFoto').files[0];
+      if (fotoFile) {
+        fotoBase64 = await compressImageToDataURL(fotoFile);
+      }
+    }
+
+    const registro = {
+      tipo_persona: tipoPersona,
+      trabajador: tipoPersona === 'planta'
+        ? { id_trabajador: selectedTrabajador.id_trabajador, nombre: selectedTrabajador.nombre, area: selectedTrabajador.area }
+        : { nombre: document.getElementById('terceroNombre').value.trim(), empresa: document.getElementById('terceroEmpresa').value.trim(), foto_id: fotoBase64 },
+      tipo_movimiento: tipoMov,
+      motivo: motivo,
+      items: items,
+      costo_total: items.reduce((sum,i) => sum + (i.costo_unitario * i.cantidad), 0),
+      firma: firmaBase64,
+      acepto_compromiso: true,
+      registrado_por: currentUser.email,
+      fecha: serverTimestamp(),
+      estado: tipoMov === 'prestamo' ? 'prestado' : null,
+      fecha_devolucion: null
+    };
+
+    // Firestore limita cada documento a 1 MB — con firma + foto comprimida vamos sobrados, pero avisamos si algo se sale de rango
+    const approxSize = new Blob([JSON.stringify(registro)]).size;
+    if (approxSize > 950000) {
+      throw new Error('El documento quedó muy pesado (firma o foto muy grande). Intenta firmar con trazos más simples o repite la foto.');
+    }
+
+    await addDoc(collection(db, 'movimientos'), registro);
+    showToast('✓ Entrega guardada correctamente');
+    resetForm();
+  } catch (e) {
+    console.error(e);
+    showToast('Error al guardar: ' + e.message);
+  } finally {
+    document.getElementById('saveBtn').disabled = false;
+    document.getElementById('saveBtn').textContent = 'Guardar entrega';
+  }
+});
+
+function resetForm(){
+  document.getElementById('trabajadorSearch').value = '';
+  document.getElementById('trabajadorArea').value = '';
+  document.getElementById('trabajadorId').value = '';
+  document.getElementById('terceroNombre').value = '';
+  document.getElementById('terceroEmpresa').value = '';
+  document.getElementById('terceroFoto').value = '';
+  selectedTrabajador = null;
+  document.getElementById('itemList').innerHTML = '';
+  itemCount = 0;
+  addItemRow();
+  document.getElementById('aceptaCheck').checked = false;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  hasSig = false;
+  updateSigStatus();
+}
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+/* ======================= CATALOGO (panel maestro) ======================= */
+async function cargarCatalogoAdmin(){
+  const box = document.getElementById('catalogoList');
+  try {
+    const snap = await getDocs(query(collection(db, 'catalogo_epp'), orderBy('tipo_proteccion')));
+    if (snap.empty) { box.innerHTML = 'Aún no hay artículos. Agrega el primero arriba.'; return; }
+    box.innerHTML = snap.docs.map(d => {
+      const c = d.data();
+      return `<div class="catalog-row">
+        <div class="catalog-info">
+          <div class="name">${c.nombre}</div>
+          <div class="meta">${c.tipo_proteccion} · tallas: ${(c.tallas||[]).join(', ')}</div>
+        </div>
+        <div class="catalog-price">Q${(c.costo_unitario||0).toFixed(2)}</div>
+      </div>`;
+    }).join('');
+  } catch(e){ box.innerHTML = 'Error al cargar catálogo.'; }
+}
+
+document.getElementById('addCatBtn').addEventListener('click', async () => {
+  const nombre = document.getElementById('catNombre').value.trim();
+  const tipo = document.getElementById('catTipo').value;
+  const costo = parseFloat(document.getElementById('catCosto').value || '0');
+  const tallasRaw = document.getElementById('catTallas').value.trim();
+  const tallas = tallasRaw ? tallasRaw.split(',').map(s => s.trim()).filter(Boolean) : ['Única'];
+  if (!nombre) return showToast('Ingresa el nombre del artículo');
+
+  try {
+    await addDoc(collection(db, 'catalogo_epp'), {
+      nombre, tipo_proteccion: tipo, costo_unitario: costo, tallas,
+      creado_por: currentUser.email,
+      fecha_creacion: serverTimestamp()
+    });
+    document.getElementById('catNombre').value = '';
+    document.getElementById('catCosto').value = '';
+    document.getElementById('catTallas').value = '';
+    showToast('✓ Artículo agregado');
+    cargarCatalogoAdmin();
+    cargarCatalogoParaItems();
+  } catch(e) {
+    showToast('Error: ' + e.message);
+  }
+});
+
+/* ======================= PERSONAL (importación desde Excel) ======================= */
+async function cargarConteoPersonal(){
+  try {
+    const snap = await getDocs(collection(db, 'personal'));
+    document.getElementById('personalCount').textContent = `${snap.size} trabajadores cargados.`;
+  } catch(e) {
+    document.getElementById('personalCount').textContent = 'No se pudo consultar.';
+  }
+}
+
+function encontrarColumna(headers, palabrasClave){
+  return headers.findIndex(h => {
+    const hh = (h||'').toString().toLowerCase();
+    return palabrasClave.some(k => hh.includes(k));
+  });
+}
+
+document.getElementById('importPersonalBtn').addEventListener('click', async () => {
+  const file = document.getElementById('personalFile').files[0];
+  const status = document.getElementById('importStatus');
+  if (!file) return showToast('Selecciona un archivo Excel primero');
+
+  status.textContent = 'Leyendo archivo...';
+  try {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, {type:'array'});
+    // Busca la hoja "Control" sin importar mayúsculas/minúsculas
+    const sheetName = wb.SheetNames.find(n => n.toLowerCase() === 'control') || wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+
+    const headers = rows[0];
+    const idxId = encontrarColumna(headers, ['codigo', 'código', 'dpi']);
+    const idxNombre = encontrarColumna(headers, ['nombre']);
+    const idxApellido = encontrarColumna(headers, ['apellido']);
+    const idxArea = encontrarColumna(headers, ['área', 'area']);
+
+    if (idxId === -1 || idxNombre === -1 || idxArea === -1) {
+      status.textContent = '';
+      return showToast('No se encontraron las columnas esperadas (Código, Nombre, Área)');
+    }
+
+    const registros = [];
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row) continue;
+      const id = row[idxId];
+      if (id === null || id === undefined || id === '') continue;
+      const area = (row[idxArea] || '').toString().trim();
+      const areaUpper = area.toUpperCase();
+      if (!area || areaUpper.includes('SUSPENDIDO')) continue; // excluye vacías y suspendidos
+      const nombreCompleto = [row[idxNombre], idxApellido !== -1 ? row[idxApellido] : null]
+        .filter(Boolean).map(s => s.toString().trim()).join(' ');
+      if (!nombreCompleto) continue;
+      registros.push({ id_trabajador: id.toString().trim(), nombre: nombreCompleto, area });
+    }
+
+    if (registros.length === 0) {
+      status.textContent = '';
+      return showToast('No se encontraron registros válidos después de filtrar');
+    }
+
+    status.textContent = `Se encontraron ${registros.length} registros. Sincronizando con Firestore...`;
+
+    // Borra el personal actual y escribe el nuevo set (reemplazo completo), en lotes de 400
+    const existentes = await getDocs(collection(db, 'personal'));
+    let batch = writeBatch(db);
+    let opCount = 0;
+    for (const docSnap of existentes.docs) {
+      batch.delete(docSnap.ref);
+      opCount++;
+      if (opCount >= 400) { await batch.commit(); batch = writeBatch(db); opCount = 0; }
+    }
+    if (opCount > 0) { await batch.commit(); batch = writeBatch(db); opCount = 0; }
+
+    for (const r of registros) {
+      const ref = doc(db, 'personal', r.id_trabajador);
+      batch.set(ref, { id_trabajador: r.id_trabajador, nombre: r.nombre, area: r.area });
+      opCount++;
+      if (opCount >= 400) { await batch.commit(); batch = writeBatch(db); opCount = 0; }
+    }
+    if (opCount > 0) await batch.commit();
+
+    status.textContent = `✓ Listo — ${registros.length} trabajadores sincronizados.`;
+    showToast('✓ Personal actualizado');
+    cargarConteoPersonal();
+    cargarPersonal(); // refresca el buscador de la pestaña Registrar
+  } catch (e) {
+    console.error(e);
+    status.textContent = '';
+    showToast('Error al importar: ' + e.message);
+  }
+});
+</script>
+</body>
+</html>
