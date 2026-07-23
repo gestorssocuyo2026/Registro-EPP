@@ -131,6 +131,7 @@
     <div class="tab active" id="tabRegistro">Registrar</div>
     <div class="tab hidden" id="tabCatalogo">Catálogo</div>
     <div class="tab hidden" id="tabPersonal">Personal</div>
+    <div class="tab hidden" id="tabPanel">Panel</div>
   </div>
 
   <!-- ---------- REGISTRO ---------- -->
@@ -252,6 +253,28 @@
     </div>
   </div>
 
+  <!-- ---------- PANEL DE COSTOS Y RECURRENCIA (solo maestro) ---------- -->
+  <div class="content hidden" id="viewPanel">
+    <div class="card">
+      <div class="card-title">💰 Costo del mes</div>
+      <label>Mes a consultar</label>
+      <input type="month" id="panelMes">
+      <div style="margin-top:16px;text-align:center;">
+        <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Total del mes</div>
+        <div id="panelTotalMes" style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:34px;color:var(--navy);">Q0.00</div>
+      </div>
+      <div id="panelPorTipo" style="margin-top:14px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">⚠️ Recurrencia de reposiciones</div>
+      <p style="font-size:12px;color:var(--muted);margin-top:0;line-height:1.5;">
+        Trabajadores con 3 o más solicitudes de reposición (daño, desgaste o pérdida) registradas en total. Útil para identificar posibles casos de mal uso.
+      </p>
+      <div id="panelRecurrencia" style="font-size:13px;color:var(--muted);">Cargando...</div>
+    </div>
+  </div>
+
   <div class="bottom-nav" id="bottomNavRegistro">
     <button class="btn btn-secondary" id="logoutBtn">Salir</button>
     <button class="btn btn-primary" id="saveBtn">Guardar entrega</button>
@@ -322,8 +345,10 @@ onAuthStateChanged(auth, async (user) => {
     if (currentRole === 'maestro') {
       document.getElementById('tabCatalogo').classList.remove('hidden');
       document.getElementById('tabPersonal').classList.remove('hidden');
+      document.getElementById('tabPanel').classList.remove('hidden');
       cargarCatalogoAdmin();
       cargarConteoPersonal();
+      inicializarPanel();
     }
     cargarPersonal();
     cargarCatalogoParaItems();
@@ -338,13 +363,16 @@ onAuthStateChanged(auth, async (user) => {
 document.getElementById('tabRegistro').addEventListener('click', () => switchTab('registro'));
 document.getElementById('tabCatalogo').addEventListener('click', () => switchTab('catalogo'));
 document.getElementById('tabPersonal').addEventListener('click', () => switchTab('personal'));
+document.getElementById('tabPanel').addEventListener('click', () => switchTab('panel'));
 function switchTab(tab){
   document.getElementById('tabRegistro').classList.toggle('active', tab==='registro');
   document.getElementById('tabCatalogo').classList.toggle('active', tab==='catalogo');
   document.getElementById('tabPersonal').classList.toggle('active', tab==='personal');
+  document.getElementById('tabPanel').classList.toggle('active', tab==='panel');
   document.getElementById('viewRegistro').classList.toggle('hidden', tab!=='registro');
   document.getElementById('viewCatalogo').classList.toggle('hidden', tab!=='catalogo');
   document.getElementById('viewPersonal').classList.toggle('hidden', tab!=='personal');
+  document.getElementById('viewPanel').classList.toggle('hidden', tab!=='panel');
   document.getElementById('bottomNavRegistro').classList.toggle('hidden', tab!=='registro');
 }
 
@@ -755,6 +783,98 @@ document.getElementById('importPersonalBtn').addEventListener('click', async () 
     showToast('Error al importar: ' + e.message);
   }
 });
+
+/* ======================= PANEL DE COSTOS Y RECURRENCIA (solo maestro) ======================= */
+let movimientosCache = null; // se carga una sola vez por sesión
+
+function mesActualISO(){
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+
+async function inicializarPanel(){
+  const mesInput = document.getElementById('panelMes');
+  mesInput.value = mesActualISO();
+  mesInput.addEventListener('change', () => renderPanelCostos());
+  await cargarMovimientos();
+  renderPanelCostos();
+  renderPanelRecurrencia();
+}
+
+async function cargarMovimientos(){
+  try {
+    const snap = await getDocs(collection(db, 'movimientos'));
+    movimientosCache = snap.docs.map(d => d.data());
+  } catch(e) {
+    console.error('Error cargando movimientos', e);
+    movimientosCache = [];
+  }
+}
+
+function renderPanelCostos(){
+  if (!movimientosCache) return;
+  const mesSel = document.getElementById('panelMes').value; // "YYYY-MM"
+  const delMes = movimientosCache.filter(m => {
+    if (!m.fecha || !m.fecha.toDate) return false;
+    const f = m.fecha.toDate();
+    const iso = `${f.getFullYear()}-${String(f.getMonth()+1).padStart(2,'0')}`;
+    return iso === mesSel;
+  });
+
+  const total = delMes.reduce((sum, m) => sum + (m.costo_total || 0), 0);
+  document.getElementById('panelTotalMes').textContent = `Q${total.toFixed(2)}`;
+
+  const porTipo = {};
+  delMes.forEach(m => {
+    (m.items || []).forEach(it => {
+      const tipo = it.tipo_proteccion || 'Sin tipo';
+      porTipo[tipo] = (porTipo[tipo] || 0) + (it.costo_unitario * it.cantidad);
+    });
+  });
+  const entradas = Object.entries(porTipo).sort((a,b) => b[1]-a[1]);
+  const box = document.getElementById('panelPorTipo');
+  if (entradas.length === 0) {
+    box.innerHTML = '<div style="font-size:12.5px;color:var(--muted);text-align:center;">Sin entregas registradas este mes.</div>';
+    return;
+  }
+  box.innerHTML = entradas.map(([tipo, costo]) => `
+    <div class="catalog-row">
+      <div class="catalog-info"><div class="name">${tipo}</div></div>
+      <div class="catalog-price">Q${costo.toFixed(2)}</div>
+    </div>
+  `).join('');
+}
+
+function renderPanelRecurrencia(){
+  if (!movimientosCache) return;
+  const conteos = {}; // key -> {nombre, area, count, motivos:{}}
+  movimientosCache.forEach(m => {
+    if (!m.motivo || !m.motivo.toLowerCase().startsWith('reposición')) return;
+    if (m.tipo_persona !== 'planta' || !m.trabajador) return;
+    const key = m.trabajador.id_trabajador;
+    if (!conteos[key]) conteos[key] = { nombre: m.trabajador.nombre, area: m.trabajador.area, count: 0, motivos: {} };
+    conteos[key].count++;
+    conteos[key].motivos[m.motivo] = (conteos[key].motivos[m.motivo] || 0) + 1;
+  });
+
+  const alertas = Object.values(conteos).filter(c => c.count >= 3).sort((a,b) => b.count - a.count);
+  const box = document.getElementById('panelRecurrencia');
+  if (alertas.length === 0) {
+    box.innerHTML = '<div style="font-size:12.5px;color:var(--muted);text-align:center;">Sin trabajadores en alerta por ahora.</div>';
+    return;
+  }
+  box.innerHTML = alertas.map(a => {
+    const detalle = Object.entries(a.motivos).map(([m,c]) => `${m.replace('Reposición por ','')}: ${c}`).join(' · ');
+    return `
+      <div class="catalog-row">
+        <div class="catalog-info">
+          <div class="name">${a.nombre}</div>
+          <div class="meta">${a.area} · ${detalle}</div>
+        </div>
+        <div class="catalog-price" style="color:var(--red);">${a.count}x</div>
+      </div>`;
+  }).join('');
+}
 </script>
 </body>
 </html>
