@@ -97,6 +97,13 @@
   .catalog-info .name{font-weight:600;color:var(--navy);}
   .catalog-info .meta{color:var(--muted);font-size:11.5px;}
   .catalog-price{font-weight:700;color:var(--blue-dark);font-size:13px;}
+
+  .area-block{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;}
+  .area-block-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .area-block-name{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:var(--navy);}
+  .area-block-total{font-weight:700;color:var(--blue-dark);font-size:13px;}
+  .area-line{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);padding:3px 0;}
+  .area-line span:last-child{color:var(--text);font-weight:600;}
 </style>
 </head>
 <body>
@@ -264,6 +271,14 @@
         <div id="panelTotalMes" style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:34px;color:var(--navy);">Q0.00</div>
       </div>
       <div id="panelPorTipo" style="margin-top:14px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🏭 Gasto por área</div>
+      <p style="font-size:12px;color:var(--muted);margin-top:0;line-height:1.5;">
+        Desglose del mes seleccionado, por área y tipo de protección.
+      </p>
+      <div id="panelPorArea"></div>
     </div>
 
     <div class="card">
@@ -835,12 +850,47 @@ function renderPanelCostos(){
   const box = document.getElementById('panelPorTipo');
   if (entradas.length === 0) {
     box.innerHTML = '<div style="font-size:12.5px;color:var(--muted);text-align:center;">Sin entregas registradas este mes.</div>';
+    document.getElementById('panelPorArea').innerHTML = '<div style="font-size:12.5px;color:var(--muted);text-align:center;">Sin entregas registradas este mes.</div>';
     return;
   }
   box.innerHTML = entradas.map(([tipo, costo]) => `
     <div class="catalog-row">
       <div class="catalog-info"><div class="name">${tipo}</div></div>
       <div class="catalog-price">Q${costo.toFixed(2)}</div>
+    </div>
+  `).join('');
+
+  // Desglose por área
+  const porArea = {}; // { area: { tipo: costo } }
+  delMes.forEach(m => {
+    const area = (m.tipo_persona === 'planta' && m.trabajador) ? (m.trabajador.area || 'Sin área') : 'TERCEROS';
+    if (!porArea[area]) porArea[area] = {};
+    (m.items || []).forEach(it => {
+      const tipo = it.tipo_proteccion || 'Sin tipo';
+      const costoItem = it.costo_unitario * it.cantidad;
+      porArea[area][tipo] = (porArea[area][tipo] || 0) + costoItem;
+    });
+  });
+
+  const areaBox = document.getElementById('panelPorArea');
+  const areas = Object.keys(porArea);
+  if (areas.length === 0) {
+    areaBox.innerHTML = '<div style="font-size:12.5px;color:var(--muted);text-align:center;">Sin entregas registradas este mes.</div>';
+    return;
+  }
+  const areasOrdenadas = areas
+    .map(area => ({ area, tipos: porArea[area], total: Object.values(porArea[area]).reduce((s,v)=>s+v,0) }))
+    .sort((a,b) => b.total - a.total);
+
+  areaBox.innerHTML = areasOrdenadas.map(a => `
+    <div class="area-block">
+      <div class="area-block-header">
+        <span class="area-block-name">${a.area}</span>
+        <span class="area-block-total">Q${a.total.toFixed(2)}</span>
+      </div>
+      ${Object.entries(a.tipos).sort((x,y)=>y[1]-x[1]).map(([tipo,costo]) => `
+        <div class="area-line"><span>${tipo}</span><span>Q${costo.toFixed(2)}</span></div>
+      `).join('')}
     </div>
   `).join('');
 }
