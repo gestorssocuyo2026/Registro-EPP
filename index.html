@@ -225,7 +225,8 @@
           <label>Tipo de protección</label>
           <select id="catTipo">
             <option>AUDITIVA</option><option>OCULAR</option><option>MANOS</option>
-            <option>PIES</option><option>RESPIRATORIA</option><option>CABEZA</option><option>CUERPO</option>
+            <option>PIES</option><option>RESPIRATORIA</option><option>CABEZA</option>
+            <option>CUERPO</option><option>INOCUIDAD</option>
           </select>
         </div>
         <div><label>Costo unitario (Q)</label><input type="number" id="catCosto" placeholder="0.00"></div>
@@ -279,6 +280,14 @@
         Desglose del mes seleccionado, por área y tipo de protección.
       </p>
       <div id="panelPorArea"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🗂️ Entregas del mes</div>
+      <p style="font-size:12px;color:var(--muted);margin-top:0;line-height:1.5;">
+        Si algún registro tiene un error, puedes eliminarlo aquí.
+      </p>
+      <div id="panelListado"></div>
     </div>
 
     <div class="card">
@@ -674,11 +683,28 @@ async function cargarCatalogoAdmin(){
           <div class="name">${c.nombre}</div>
           <div class="meta">${c.tipo_proteccion} · tallas: ${(c.tallas||[]).join(', ')}</div>
         </div>
-        <div class="catalog-price">Q${(c.costo_unitario||0).toFixed(2)}</div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="catalog-price">Q${(c.costo_unitario||0).toFixed(2)}</div>
+          <button class="remove-btn" data-delete-cat="${d.id}">Eliminar</button>
+        </div>
       </div>`;
     }).join('');
   } catch(e){ box.innerHTML = 'Error al cargar catálogo.'; }
 }
+
+document.getElementById('catalogoList').addEventListener('click', async (e) => {
+  const id = e.target.dataset.deleteCat;
+  if (!id) return;
+  if (!confirm('¿Eliminar este artículo del catálogo? Esta acción no se puede deshacer.')) return;
+  try {
+    await deleteDoc(doc(db, 'catalogo_epp', id));
+    showToast('✓ Artículo eliminado');
+    cargarCatalogoAdmin();
+    cargarCatalogoParaItems();
+  } catch(err) {
+    showToast('Error al eliminar: ' + err.message);
+  }
+});
 
 document.getElementById('addCatBtn').addEventListener('click', async () => {
   const nombre = document.getElementById('catNombre').value.trim();
@@ -819,7 +845,7 @@ async function inicializarPanel(){
 async function cargarMovimientos(){
   try {
     const snap = await getDocs(collection(db, 'movimientos'));
-    movimientosCache = snap.docs.map(d => d.data());
+    movimientosCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   } catch(e) {
     console.error('Error cargando movimientos', e);
     movimientosCache = [];
@@ -851,6 +877,7 @@ function renderPanelCostos(){
   if (entradas.length === 0) {
     box.innerHTML = '<div style="font-size:12.5px;color:var(--muted);text-align:center;">Sin entregas registradas este mes.</div>';
     document.getElementById('panelPorArea').innerHTML = '<div style="font-size:12.5px;color:var(--muted);text-align:center;">Sin entregas registradas este mes.</div>';
+    document.getElementById('panelListado').innerHTML = '<div style="font-size:12.5px;color:var(--muted);text-align:center;">Sin entregas registradas este mes.</div>';
     return;
   }
   box.innerHTML = entradas.map(([tipo, costo]) => `
@@ -893,7 +920,49 @@ function renderPanelCostos(){
       `).join('')}
     </div>
   `).join('');
+
+  renderPanelListado(delMes);
 }
+
+function renderPanelListado(delMes){
+  const box = document.getElementById('panelListado');
+  if (!delMes || delMes.length === 0) {
+    box.innerHTML = '<div style="font-size:12.5px;color:var(--muted);text-align:center;">Sin entregas registradas este mes.</div>';
+    return;
+  }
+  const ordenado = [...delMes].sort((a,b) => (b.fecha?.toDate?.() || 0) - (a.fecha?.toDate?.() || 0));
+  box.innerHTML = ordenado.map(m => {
+    const nombre = m.trabajador ? m.trabajador.nombre : '—';
+    const fechaTxt = m.fecha && m.fecha.toDate ? m.fecha.toDate().toLocaleDateString('es-GT', {day:'2-digit', month:'short'}) : '—';
+    const itemsTxt = (m.items || []).map(it => `${it.nombre} (${it.cantidad})`).join(', ');
+    return `
+      <div class="catalog-row">
+        <div class="catalog-info">
+          <div class="name">${nombre} — ${fechaTxt}</div>
+          <div class="meta">${itemsTxt} · ${m.motivo || ''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="catalog-price">Q${(m.costo_total||0).toFixed(2)}</div>
+          <button class="remove-btn" data-delete-mov="${m.id}">Eliminar</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+document.getElementById('panelListado').addEventListener('click', async (e) => {
+  const id = e.target.dataset.deleteMov;
+  if (!id) return;
+  if (!confirm('¿Eliminar este registro de entrega? Esta acción no se puede deshacer.')) return;
+  try {
+    await deleteDoc(doc(db, 'movimientos', id));
+    showToast('✓ Registro eliminado');
+    await cargarMovimientos();
+    renderPanelCostos();
+    renderPanelRecurrencia();
+  } catch(err) {
+    showToast('Error al eliminar: ' + err.message);
+  }
+});
 
 function renderPanelRecurrencia(){
   if (!movimientosCache) return;
