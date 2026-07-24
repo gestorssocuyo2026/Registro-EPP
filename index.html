@@ -137,7 +137,7 @@
   <div class="tabs">
     <div class="tab active" id="tabRegistro">Registrar</div>
     <div class="tab hidden" id="tabCatalogo">Catálogo</div>
-    <div class="tab hidden" id="tabPersonal">Personal</div>
+    <div class="tab hidden" id="tabPersonal">Datos</div>
     <div class="tab hidden" id="tabPanel">Panel</div>
   </div>
 
@@ -184,6 +184,7 @@
         <div class="chip" data-val="Reposición por daño">Reposición · daño</div>
         <div class="chip" data-val="Reposición por desgaste">Reposición · desgaste</div>
         <div class="chip" data-val="Reposición por pérdida">Reposición · pérdida</div>
+        <div class="chip" data-val="Cambio de puesto">Cambio de puesto</div>
       </div>
     </div>
 
@@ -226,7 +227,8 @@
           <select id="catTipo">
             <option>AUDITIVA</option><option>OCULAR</option><option>MANOS</option>
             <option>PIES</option><option>RESPIRATORIA</option><option>CABEZA</option>
-            <option>CUERPO</option><option>INOCUIDAD</option>
+            <option>CUERPO</option><option>INOCUIDAD</option><option>FACIAL</option>
+            <option>PERMISOS DE TRABAJO</option>
           </select>
         </div>
         <div><label>Costo unitario (Q)</label><input type="number" id="catCosto" placeholder="0.00"></div>
@@ -259,16 +261,52 @@
       <div class="card-title">Personal cargado actualmente</div>
       <div id="personalCount" style="font-size:13px;color:var(--muted);">Cargando...</div>
     </div>
+
+    <div class="card">
+      <div class="card-title">🧰 Importar catálogo de EPP</div>
+      <p style="font-size:12.5px;color:var(--muted);line-height:1.5;margin-top:0;">
+        Sube el Excel con la hoja "Listado de EPP" (artículo + tipo de protección). Los artículos se agregan sin precio — lo completas manualmente después desde la pestaña Catálogo. No borra artículos que ya tengas, solo agrega los que falten.
+      </p>
+      <label>Archivo Excel (.xlsx)</label>
+      <input type="file" id="catalogoFile" accept=".xlsx,.xls">
+      <button class="add-item" id="importCatalogoBtn" style="margin-top:14px;">Importar catálogo</button>
+      <p id="importCatalogoStatus" style="font-size:12.5px;color:var(--blue-dark);font-weight:600;margin-bottom:0;"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🗄️ Importar histórico de entregas</div>
+      <p style="font-size:12.5px;color:var(--muted);line-height:1.5;margin-top:0;">
+        Sube el Excel con la hoja "Registro de Entrega" (2024 a la fecha). Se importa con la fecha real de cada registro, sin firma ni costo (no había precios cargados). Esto puede tardar unos minutos por el volumen de registros. No se puede deshacer con un botón — si necesitas repetirlo, avísame.
+      </p>
+      <label>Archivo Excel (.xlsx)</label>
+      <input type="file" id="historicoFile" accept=".xlsx,.xls">
+      <button class="add-item" id="importHistoricoBtn" style="margin-top:14px;">Importar histórico</button>
+      <p id="importHistoricoStatus" style="font-size:12.5px;color:var(--blue-dark);font-weight:600;margin-bottom:0;"></p>
+    </div>
   </div>
 
   <!-- ---------- PANEL DE COSTOS Y RECURRENCIA (solo maestro) ---------- -->
   <div class="content hidden" id="viewPanel">
     <div class="card">
-      <div class="card-title">💰 Costo del mes</div>
-      <label>Mes a consultar</label>
-      <input type="month" id="panelMes">
+      <div class="card-title">💰 Costos</div>
+      <div class="row2">
+        <div>
+          <label>Año</label>
+          <select id="panelAnio"></select>
+        </div>
+        <div>
+          <label>Mes</label>
+          <select id="panelMesSel">
+            <option value="todos">Todos los meses</option>
+            <option value="1">Enero</option><option value="2">Febrero</option><option value="3">Marzo</option>
+            <option value="4">Abril</option><option value="5">Mayo</option><option value="6">Junio</option>
+            <option value="7">Julio</option><option value="8">Agosto</option><option value="9">Septiembre</option>
+            <option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+          </select>
+        </div>
+      </div>
       <div style="margin-top:16px;text-align:center;">
-        <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Total del mes</div>
+        <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;" id="panelTotalLabel">Total del período</div>
         <div id="panelTotalMes" style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:34px;color:var(--navy);">Q0.00</div>
       </div>
       <div id="panelPorTipo" style="margin-top:14px;"></div>
@@ -315,7 +353,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, collection, doc, getDoc, getDocs, addDoc, setDoc, deleteDoc,
-  writeBatch, query, orderBy, serverTimestamp
+  writeBatch, query, orderBy, serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ======================= FIREBASE INIT ======================= */
@@ -825,19 +863,218 @@ document.getElementById('importPersonalBtn').addEventListener('click', async () 
   }
 });
 
+/* ======================= IMPORTAR CATÁLOGO DE EPP (desde "Listado de EPP") ======================= */
+const MAPA_TIPOS = {
+  'protección de manos': 'MANOS',
+  'protección para las manos': 'MANOS',
+  'protección ocular': 'OCULAR',
+  'protección de cabeza': 'CABEZA',
+  'protección para la cabeza': 'CABEZA',
+  'protección auditiva': 'AUDITIVA',
+  'protección de pies': 'PIES',
+  'protección para los pies': 'PIES',
+  'protección respiratoria': 'RESPIRATORIA',
+  'protección facial': 'FACIAL',
+  'protección para el cuerpo': 'CUERPO',
+  'protección del cuerpo': 'CUERPO',
+  'talonarios de permisos de trabajo': 'PERMISOS DE TRABAJO',
+  'permisos de trabajo': 'PERMISOS DE TRABAJO'
+};
+function mapearTipo(raw){
+  if (!raw) return 'SIN TIPO';
+  const key = raw.toString().trim().toLowerCase();
+  return MAPA_TIPOS[key] || raw.toString().trim().toUpperCase();
+}
+
+document.getElementById('importCatalogoBtn').addEventListener('click', async () => {
+  const file = document.getElementById('catalogoFile').files[0];
+  const status = document.getElementById('importCatalogoStatus');
+  if (!file) return showToast('Selecciona un archivo Excel primero');
+
+  status.textContent = 'Leyendo archivo...';
+  try {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, {type:'array'});
+    const sheetName = wb.SheetNames.find(n => n.toLowerCase().includes('listado')) ;
+    if (!sheetName) { status.textContent=''; return showToast('No se encontró la hoja "Listado de EPP"'); }
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null});
+
+    let tipoActual = null;
+    const nuevos = [];
+    for (const row of rows) {
+      const tipoCol = row[0], itemCol = row[1];
+      if (tipoCol) tipoActual = tipoCol;
+      if (itemCol && itemCol.toString().trim() && itemCol.toString().toLowerCase() !== 'listado de epp a entregar') {
+        nuevos.push({ nombre: itemCol.toString().trim(), tipo_proteccion: mapearTipo(tipoActual) });
+      }
+    }
+    if (nuevos.length === 0) { status.textContent=''; return showToast('No se encontraron artículos en la hoja'); }
+
+    status.textContent = `Revisando duplicados contra tu catálogo actual...`;
+    const existentesSnap = await getDocs(collection(db, 'catalogo_epp'));
+    const nombresExistentes = new Set(existentesSnap.docs.map(d => (d.data().nombre||'').trim().toLowerCase()));
+
+    const aAgregar = nuevos.filter(n => !nombresExistentes.has(n.nombre.toLowerCase()));
+    if (aAgregar.length === 0) { status.textContent = '✓ Todos los artículos ya estaban en tu catálogo.'; return; }
+
+    status.textContent = `Agregando ${aAgregar.length} artículos nuevos...`;
+    let batch = writeBatch(db);
+    let opCount = 0;
+    for (const item of aAgregar) {
+      const ref = doc(collection(db, 'catalogo_epp'));
+      batch.set(ref, {
+        nombre: item.nombre, tipo_proteccion: item.tipo_proteccion,
+        costo_unitario: 0, tallas: ['Única'],
+        creado_por: currentUser.email, fecha_creacion: serverTimestamp(),
+        importado_de_excel: true
+      });
+      opCount++;
+      if (opCount >= 400) { await batch.commit(); batch = writeBatch(db); opCount = 0; }
+    }
+    if (opCount > 0) await batch.commit();
+
+    status.textContent = `✓ Listo — ${aAgregar.length} artículos agregados (sin precio, complétalo abajo en Catálogo).`;
+    showToast('✓ Catálogo actualizado');
+    cargarCatalogoAdmin();
+    cargarCatalogoParaItems();
+  } catch(e) {
+    console.error(e);
+    status.textContent = '';
+    showToast('Error al importar catálogo: ' + e.message);
+  }
+});
+
+/* ======================= IMPORTAR HISTÓRICO DE ENTREGAS (desde "Registro de Entrega") ======================= */
+const MAPA_MOTIVOS = {
+  'cambio (daño/desgaste)': 'Reposición por daño',
+  'reposición (pérdida)': 'Reposición por pérdida',
+  'nuevo ingreso': 'Nuevo ingreso',
+  'cambio de puesto': 'Cambio de puesto'
+};
+function mapearMotivo(raw){
+  if (!raw) return 'Sin motivo';
+  const key = raw.toString().trim().toLowerCase();
+  return MAPA_MOTIVOS[key] || raw.toString().trim();
+}
+
+document.getElementById('importHistoricoBtn').addEventListener('click', async () => {
+  const file = document.getElementById('historicoFile').files[0];
+  const status = document.getElementById('importHistoricoStatus');
+  if (!file) return showToast('Selecciona un archivo Excel primero');
+
+  status.textContent = 'Leyendo archivo...';
+  try {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, {type:'array', cellDates:true});
+    const sheetName = wb.SheetNames.find(n => n.toLowerCase().includes('registro de entrega'));
+    if (!sheetName) { status.textContent=''; return showToast('No se encontró la hoja "Registro de Entrega"'); }
+    const rowsConFechas = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null});
+
+    // Encuentra la fila de encabezados (contiene "Fecha de entrega EPP")
+    let headerIdx = rowsConFechas.findIndex(r => r.some(c => (c||'').toString().includes('Fecha de entrega EPP')));
+    if (headerIdx === -1) { status.textContent=''; return showToast('No se encontraron los encabezados esperados'); }
+
+    const registros = [];
+    for (let i = headerIdx+1; i < rowsConFechas.length; i++) {
+      const row = rowsConFechas[i];
+      if (!row || row[0] == null) continue;
+      const idResp = row[0];
+      const fechaRaw = row[1];
+      const codigo = row[2];
+      const colaborador = (row[3]||'').toString().trim();
+      const area = (row[4]||'').toString().trim() || 'Sin área';
+      const empresa = (row[5]||'').toString().trim();
+      const tipoEPP = row[6];
+      const descripcion = (row[16]||'').toString().trim() || (row[6]||'').toString().trim();
+      const cantidad = parseInt(row[17]) || 1;
+      const personaEntrega = (row[18]||'').toString().trim();
+      const motivoRaw = row[19];
+      const observacion = (row[20]||'').toString().trim();
+
+      if (!colaborador && !descripcion) continue;
+      let fecha;
+      if (fechaRaw instanceof Date) fecha = fechaRaw;
+      else if (typeof fechaRaw === 'number') fecha = new Date(Math.round((fechaRaw - 25569) * 86400 * 1000));
+      else fecha = new Date();
+
+      const esPlanta = empresa.toLowerCase() === 'cbc';
+
+      registros.push({
+        docId: 'hist_' + idResp,
+        data: {
+          tipo_persona: esPlanta ? 'planta' : 'tercero',
+          trabajador: esPlanta
+            ? { id_trabajador: (codigo||'').toString().trim(), nombre: colaborador, area: area }
+            : { nombre: colaborador, empresa: empresa || 'No especificada' },
+          tipo_movimiento: 'entrega',
+          motivo: mapearMotivo(motivoRaw),
+          items: [{
+            epp_id: null, nombre: descripcion, tipo_proteccion: mapearTipo(tipoEPP),
+            costo_unitario: 0, talla: 'N/A', cantidad: cantidad
+          }],
+          costo_total: 0,
+          firma: null,
+          acepto_compromiso: false,
+          registrado_por: personaEntrega || 'Importación histórica',
+          fecha: Timestamp.fromDate(fecha),
+          estado: null,
+          fecha_devolucion: null,
+          observacion: observacion,
+          importado_historico: true
+        }
+      });
+    }
+
+    if (registros.length === 0) { status.textContent=''; return showToast('No se encontraron registros válidos'); }
+
+    status.textContent = `Importando ${registros.length} registros históricos (0%)...`;
+    let batch = writeBatch(db);
+    let opCount = 0;
+    let hechos = 0;
+    for (const r of registros) {
+      batch.set(doc(db, 'movimientos', r.docId), r.data);
+      opCount++;
+      if (opCount >= 400) {
+        await batch.commit();
+        hechos += opCount;
+        status.textContent = `Importando ${registros.length} registros históricos (${Math.round(hechos/registros.length*100)}%)...`;
+        batch = writeBatch(db); opCount = 0;
+      }
+    }
+    if (opCount > 0) { await batch.commit(); hechos += opCount; }
+
+    status.textContent = `✓ Listo — ${registros.length} registros históricos importados.`;
+    showToast('✓ Histórico importado');
+  } catch(e) {
+    console.error(e);
+    status.textContent = '';
+    showToast('Error al importar histórico: ' + e.message);
+  }
+});
+
 /* ======================= PANEL DE COSTOS Y RECURRENCIA (solo maestro) ======================= */
 let movimientosCache = null; // se carga una sola vez por sesión
 
-function mesActualISO(){
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-}
-
 async function inicializarPanel(){
-  const mesInput = document.getElementById('panelMes');
-  mesInput.value = mesActualISO();
-  mesInput.addEventListener('change', () => renderPanelCostos());
   await cargarMovimientos();
+
+  // Poblar selector de año con los años que realmente aparecen en los datos
+  const anios = new Set(movimientosCache
+    .filter(m => m.fecha && m.fecha.toDate)
+    .map(m => m.fecha.toDate().getFullYear()));
+  const anioActual = new Date().getFullYear();
+  anios.add(anioActual);
+  const aniosOrdenados = [...anios].sort((a,b) => b-a);
+
+  const anioSel = document.getElementById('panelAnio');
+  anioSel.innerHTML = `<option value="todos">Todos los años</option>` +
+    aniosOrdenados.map(a => `<option value="${a}">${a}</option>`).join('');
+  anioSel.value = anioActual.toString();
+  document.getElementById('panelMesSel').value = (new Date().getMonth()+1).toString();
+
+  anioSel.addEventListener('change', () => renderPanelCostos());
+  document.getElementById('panelMesSel').addEventListener('change', () => renderPanelCostos());
+
   renderPanelCostos();
   renderPanelRecurrencia();
 }
@@ -854,12 +1091,20 @@ async function cargarMovimientos(){
 
 function renderPanelCostos(){
   if (!movimientosCache) return;
-  const mesSel = document.getElementById('panelMes').value; // "YYYY-MM"
+  const anioSel = document.getElementById('panelAnio').value; // "todos" o "2026"
+  const mesSel = document.getElementById('panelMesSel').value; // "todos" o "1".."12"
+
+  const label = document.getElementById('panelTotalLabel');
+  if (anioSel === 'todos') label.textContent = 'Total histórico (todos los años)';
+  else if (mesSel === 'todos') label.textContent = `Total del año ${anioSel}`;
+  else label.textContent = `Total de ${document.getElementById('panelMesSel').selectedOptions[0].text} ${anioSel}`;
+
   const delMes = movimientosCache.filter(m => {
     if (!m.fecha || !m.fecha.toDate) return false;
     const f = m.fecha.toDate();
-    const iso = `${f.getFullYear()}-${String(f.getMonth()+1).padStart(2,'0')}`;
-    return iso === mesSel;
+    if (anioSel !== 'todos' && f.getFullYear().toString() !== anioSel) return false;
+    if (anioSel !== 'todos' && mesSel !== 'todos' && (f.getMonth()+1).toString() !== mesSel) return false;
+    return true;
   });
 
   const total = delMes.reduce((sum, m) => sum + (m.costo_total || 0), 0);
