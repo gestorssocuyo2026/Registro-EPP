@@ -276,7 +276,7 @@
     <div class="card">
       <div class="card-title">🗄️ Importar histórico de entregas</div>
       <p style="font-size:12.5px;color:var(--muted);line-height:1.5;margin-top:0;">
-        Sube el Excel con la hoja "Registro de Entrega" (2024 a la fecha). Se importa con la fecha real de cada registro, sin firma ni costo (no había precios cargados). Esto puede tardar unos minutos por el volumen de registros. No se puede deshacer con un botón — si necesitas repetirlo, avísame.
+        Sube el Excel con la hoja "Registro de Entrega" (2024 a la fecha). Se importa con la fecha real de cada registro y el costo se toma del precio que tengas cargado en el Catálogo para ese artículo (si aún no le pusiste precio, queda en Q0.00 hasta que lo edites). Puedes volver a subir el archivo actualizado cuando quieras — los registros que ya existen no se duplican, solo se agregan o actualizan los nuevos. Con volúmenes grandes puede tardar unos minutos, no cierres la pestaña mientras corre.
       </p>
       <label>Archivo Excel (.xlsx)</label>
       <input type="file" id="historicoFile" accept=".xlsx,.xls">
@@ -1071,6 +1071,12 @@ document.getElementById('importHistoricoBtn').addEventListener('click', async ()
     if (!sheetName) { status.textContent=''; return showToast('No se encontró la hoja "Registro de Entrega"'); }
     const rowsConFechas = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null});
 
+    // Precios actuales del catálogo, para que las entregas nuevas ya traigan costo real
+    status.textContent = 'Consultando precios del catálogo...';
+    const catSnap = await getDocs(collection(db, 'catalogo_epp'));
+    const precios = {};
+    catSnap.docs.forEach(d => { precios[(d.data().nombre||'').trim().toLowerCase()] = d.data().costo_unitario || 0; });
+
     // Encuentra la fila de encabezados (contiene "Fecha de entrega EPP")
     let headerIdx = rowsConFechas.findIndex(r => r.some(c => (c||'').toString().includes('Fecha de entrega EPP')));
     if (headerIdx === -1) { status.textContent=''; return showToast('No se encontraron los encabezados esperados'); }
@@ -1099,6 +1105,7 @@ document.getElementById('importHistoricoBtn').addEventListener('click', async ()
       else fecha = new Date();
 
       const esPlanta = empresa.toLowerCase() === 'cbc';
+      const costoUnit = precios[descripcion.trim().toLowerCase()] || 0;
 
       registros.push({
         docId: 'hist_' + idResp,
@@ -1111,9 +1118,9 @@ document.getElementById('importHistoricoBtn').addEventListener('click', async ()
           motivo: mapearMotivo(motivoRaw),
           items: [{
             epp_id: null, nombre: descripcion, tipo_proteccion: mapearTipo(tipoEPP),
-            costo_unitario: 0, talla: 'N/A', cantidad: cantidad
+            costo_unitario: costoUnit, talla: 'N/A', cantidad: cantidad
           }],
-          costo_total: 0,
+          costo_total: costoUnit * cantidad,
           firma: null,
           acepto_compromiso: false,
           registrado_por: personaEntrega || 'Importación histórica',
