@@ -9,6 +9,7 @@
 
 <!-- Firebase (modular SDK — required to connect to the named "us-central" Firestore database) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 
 <style>
   :root{
@@ -104,6 +105,16 @@
   .area-block-total{font-weight:700;color:var(--blue-dark);font-size:13px;}
   .area-line{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);padding:3px 0;}
   .area-line span:last-child{color:var(--text);font-weight:600;}
+
+  .treemap-box{border-radius:8px;padding:8px;color:#fff;font-size:11px;font-weight:600;display:flex;flex-direction:column;justify-content:flex-end;}
+  .treemap-box .tm-name{opacity:.9;font-size:10.5px;line-height:1.2;}
+  .treemap-box .tm-val{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;}
+
+  .top-row{display:flex;align-items:center;gap:8px;padding:6px 0;}
+  .top-row .top-name{flex:0 0 40%;font-size:12px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .top-row .top-bar-bg{flex:1;background:#EEF1F4;border-radius:6px;height:16px;position:relative;overflow:hidden;}
+  .top-row .top-bar-fill{background:var(--blue);height:100%;border-radius:6px;}
+  .top-row .top-count{flex:0 0 26px;text-align:right;font-size:11.5px;font-weight:700;color:var(--blue-dark);}
 </style>
 </head>
 <body>
@@ -139,6 +150,7 @@
     <div class="tab hidden" id="tabCatalogo">Catálogo</div>
     <div class="tab hidden" id="tabPersonal">Datos</div>
     <div class="tab hidden" id="tabPanel">Panel</div>
+    <div class="tab hidden" id="tabDashboard">Dashboard</div>
   </div>
 
   <!-- ---------- REGISTRO ---------- -->
@@ -337,6 +349,49 @@
     </div>
   </div>
 
+  <!-- ---------- DASHBOARD (solo maestro) ---------- -->
+  <div class="content hidden" id="viewDashboard">
+    <div class="card">
+      <div class="card-title">📊 Filtros</div>
+      <div class="row2">
+        <div><label>Desde</label><input type="date" id="dashDesde"></div>
+        <div><label>Hasta</label><input type="date" id="dashHasta"></div>
+      </div>
+      <label>Empresa</label>
+      <select id="dashEmpresa"><option value="todas">Todas</option></select>
+    </div>
+
+    <div class="card" style="text-align:center;">
+      <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Entregas</div>
+      <div id="dashTotalEntregas" style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:38px;color:var(--navy);">0</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Motivo de entrega</div>
+      <canvas id="chartMotivo" height="220"></canvas>
+    </div>
+
+    <div class="card">
+      <div class="card-title">EPP entregado por área</div>
+      <canvas id="chartArea" height="220"></canvas>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Colaboradores con mayores entregas</div>
+      <div id="dashTopColaboradores"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Cantidad de EPP entregado</div>
+      <div id="dashTreemap" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Tipo de EPP entregado</div>
+      <canvas id="chartTipo" height="220"></canvas>
+    </div>
+  </div>
+
   <div class="bottom-nav" id="bottomNavRegistro">
     <button class="btn btn-secondary" id="logoutBtn">Salir</button>
     <button class="btn btn-primary" id="saveBtn">Guardar entrega</button>
@@ -408,9 +463,11 @@ onAuthStateChanged(auth, async (user) => {
       document.getElementById('tabCatalogo').classList.remove('hidden');
       document.getElementById('tabPersonal').classList.remove('hidden');
       document.getElementById('tabPanel').classList.remove('hidden');
+      document.getElementById('tabDashboard').classList.remove('hidden');
       cargarCatalogoAdmin();
       cargarConteoPersonal();
       inicializarPanel();
+      inicializarDashboard();
     }
     cargarPersonal();
     cargarCatalogoParaItems();
@@ -426,15 +483,18 @@ document.getElementById('tabRegistro').addEventListener('click', () => switchTab
 document.getElementById('tabCatalogo').addEventListener('click', () => switchTab('catalogo'));
 document.getElementById('tabPersonal').addEventListener('click', () => switchTab('personal'));
 document.getElementById('tabPanel').addEventListener('click', () => switchTab('panel'));
+document.getElementById('tabDashboard').addEventListener('click', () => switchTab('dashboard'));
 function switchTab(tab){
   document.getElementById('tabRegistro').classList.toggle('active', tab==='registro');
   document.getElementById('tabCatalogo').classList.toggle('active', tab==='catalogo');
   document.getElementById('tabPersonal').classList.toggle('active', tab==='personal');
   document.getElementById('tabPanel').classList.toggle('active', tab==='panel');
+  document.getElementById('tabDashboard').classList.toggle('active', tab==='dashboard');
   document.getElementById('viewRegistro').classList.toggle('hidden', tab!=='registro');
   document.getElementById('viewCatalogo').classList.toggle('hidden', tab!=='catalogo');
   document.getElementById('viewPersonal').classList.toggle('hidden', tab!=='personal');
   document.getElementById('viewPanel').classList.toggle('hidden', tab!=='panel');
+  document.getElementById('viewDashboard').classList.toggle('hidden', tab!=='dashboard');
   document.getElementById('bottomNavRegistro').classList.toggle('hidden', tab!=='registro');
 }
 
@@ -1357,6 +1417,143 @@ function renderPanelRecurrencia(){
         <div class="catalog-price" style="color:var(--red);">${a.count}x</div>
       </div>`;
   }).join('');
+}
+
+/* ======================= DASHBOARD (solo maestro) ======================= */
+const DASH_COLORS = ['#0F5FA6','#0B2540','#F0A030','#6FA8D8','#2E7D5B','#C0453D','#8E7CC3','#4FB0C6','#B08D57','#7A8C9E'];
+let chartMotivoInst = null, chartAreaInst = null, chartTipoInst = null;
+
+function inicializarDashboard(){
+  const hoy = new Date();
+  const hace30 = new Date(hoy.getTime() - 30*24*60*60*1000);
+  document.getElementById('dashHasta').value = hoy.toISOString().slice(0,10);
+  document.getElementById('dashDesde').value = hace30.toISOString().slice(0,10);
+
+  const empresas = new Set();
+  (movimientosCache || []).forEach(m => {
+    if (m.tipo_persona === 'planta') empresas.add('cbc');
+    else if (m.trabajador && m.trabajador.empresa) empresas.add(m.trabajador.empresa);
+  });
+  const empresaSel = document.getElementById('dashEmpresa');
+  empresaSel.innerHTML = '<option value="todas">Todas</option>' +
+    [...empresas].sort().map(e => `<option value="${e}">${e}</option>`).join('');
+
+  document.getElementById('dashDesde').addEventListener('change', renderDashboard);
+  document.getElementById('dashHasta').addEventListener('change', renderDashboard);
+  empresaSel.addEventListener('change', renderDashboard);
+
+  renderDashboard();
+}
+
+function renderDashboard(){
+  if (!movimientosCache) return;
+  const desde = document.getElementById('dashDesde').value;
+  const hasta = document.getElementById('dashHasta').value;
+  const empresaFiltro = document.getElementById('dashEmpresa').value;
+
+  const filtrados = movimientosCache.filter(m => {
+    if (!m.fecha || !m.fecha.toDate) return false;
+    const f = m.fecha.toDate();
+    const fISO = f.toISOString().slice(0,10);
+    if (desde && fISO < desde) return false;
+    if (hasta && fISO > hasta) return false;
+    const empresaMov = m.tipo_persona === 'planta' ? 'cbc' : (m.trabajador && m.trabajador.empresa) || 'No especificada';
+    if (empresaFiltro !== 'todas' && empresaMov !== empresaFiltro) return false;
+    return true;
+  });
+
+  document.getElementById('dashTotalEntregas').textContent = filtrados.length;
+
+  // --- Motivo (doughnut) ---
+  const porMotivo = {};
+  filtrados.forEach(m => { const mo = m.motivo || 'Sin motivo'; porMotivo[mo] = (porMotivo[mo]||0)+1; });
+  dibujarDoughnut('chartMotivo', chartMotivoInst, porMotivo, (i)=>chartMotivoInst=i);
+
+  // --- EPP por área (bar) ---
+  const porArea = {};
+  filtrados.forEach(m => {
+    if (m.tipo_persona !== 'planta' || !m.trabajador) return;
+    const a = m.trabajador.area || 'Sin área';
+    const cant = (m.items||[]).reduce((s,it)=>s+(it.cantidad||0),0);
+    porArea[a] = (porArea[a]||0) + cant;
+  });
+  dibujarBar('chartArea', chartAreaInst, porArea, (i)=>chartAreaInst=i);
+
+  // --- Top colaboradores ---
+  const porColaborador = {};
+  filtrados.forEach(m => {
+    if (m.tipo_persona !== 'planta' || !m.trabajador) return;
+    const n = m.trabajador.nombre || 'Sin nombre';
+    porColaborador[n] = (porColaborador[n]||0)+1;
+  });
+  const topCol = Object.entries(porColaborador).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const maxCol = topCol.length ? topCol[0][1] : 1;
+  document.getElementById('dashTopColaboradores').innerHTML = topCol.map(([nombre,count]) => `
+    <div class="top-row">
+      <div class="top-name">${nombre}</div>
+      <div class="top-bar-bg"><div class="top-bar-fill" style="width:${(count/maxCol*100).toFixed(0)}%;"></div></div>
+      <div class="top-count">${count}</div>
+    </div>
+  `).join('') || '<div style="font-size:12.5px;color:var(--muted);">Sin datos en este período.</div>';
+
+  // --- Cantidad de EPP entregado (treemap) ---
+  const porItem = {};
+  filtrados.forEach(m => (m.items||[]).forEach(it => {
+    porItem[it.nombre] = (porItem[it.nombre]||0) + (it.cantidad||0);
+  }));
+  const topItems = Object.entries(porItem).sort((a,b)=>b[1]-a[1]).slice(0,12);
+  const totalItems = topItems.reduce((s,[,v])=>s+v, 0) || 1;
+  document.getElementById('dashTreemap').innerHTML = topItems.map(([nombre,cant], idx) => {
+    const pct = cant/totalItems;
+    const basis = Math.max(pct*100, 12); // ancho mínimo para que quepa el texto
+    return `<div class="treemap-box" style="flex: ${basis} 1 ${basis}%; min-width:90px; height:90px; background:${DASH_COLORS[idx % DASH_COLORS.length]};">
+      <div class="tm-name">${nombre}</div>
+      <div class="tm-val">${cant}</div>
+    </div>`;
+  }).join('') || '<div style="font-size:12.5px;color:var(--muted);">Sin datos en este período.</div>';
+
+  // --- Tipo de EPP entregado (doughnut) ---
+  const porTipoQ = {};
+  filtrados.forEach(m => (m.items||[]).forEach(it => {
+    const t = it.tipo_proteccion || 'Sin tipo';
+    porTipoQ[t] = (porTipoQ[t]||0) + (it.cantidad||0);
+  }));
+  dibujarDoughnut('chartTipo', chartTipoInst, porTipoQ, (i)=>chartTipoInst=i);
+}
+
+function dibujarDoughnut(canvasId, instanciaPrevia, datos, guardarInstancia){
+  if (instanciaPrevia) instanciaPrevia.destroy();
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  const entradas = Object.entries(datos);
+  const inst = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: entradas.map(e=>e[0]),
+      datasets: [{ data: entradas.map(e=>e[1]), backgroundColor: DASH_COLORS, borderWidth: 2, borderColor: '#fff' }]
+    },
+    options: {
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }
+    }
+  });
+  guardarInstancia(inst);
+}
+
+function dibujarBar(canvasId, instanciaPrevia, datos, guardarInstancia){
+  if (instanciaPrevia) instanciaPrevia.destroy();
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  const entradas = Object.entries(datos).sort((a,b)=>b[1]-a[1]);
+  const inst = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: entradas.map(e=>e[0]),
+      datasets: [{ data: entradas.map(e=>e[1]), backgroundColor: '#0F5FA6', borderRadius: 6 }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: { x: { ticks: { font: { size: 10 } } }, y: { beginAtZero: true } }
+    }
+  });
+  guardarInstancia(inst);
 }
 </script>
 </body>
