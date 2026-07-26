@@ -331,7 +331,7 @@
     <div class="card">
       <div class="card-title">⚠️ Recurrencia de reposiciones</div>
       <p style="font-size:12px;color:var(--muted);margin-top:0;line-height:1.5;">
-        Trabajadores con 3 o más solicitudes de reposición (daño, desgaste o pérdida) registradas en total. Útil para identificar posibles casos de mal uso.
+        Trabajadores con 3 o más solicitudes de reposición (daño, desgaste o pérdida) en el período seleccionado arriba (año/mes). Útil para identificar posibles casos de mal uso.
       </p>
       <div id="panelRecurrencia" style="font-size:13px;color:var(--muted);">Cargando...</div>
     </div>
@@ -508,31 +508,43 @@ function addItemRow(){
   const div = document.createElement('div');
   div.className = 'item';
   div.id = id;
-  const options = catalogoCache.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+  const tiposDisponibles = [...new Set(catalogoCache.map(c => c.tipo_proteccion))].sort();
+  const tipoOptions = tiposDisponibles.map(t => `<option value="${t}">${t}</option>`).join('');
   div.innerHTML = `
     <div class="item-top">
       <span class="item-tag" id="${id}_tag">—</span>
       <button class="remove-btn" onclick="document.getElementById('${id}').remove()">Quitar</button>
     </div>
-    <label style="margin-top:0;">Artículo</label>
-    <select id="${id}_articulo">${options || '<option value="">Cargando catálogo...</option>'}</select>
+    <label style="margin-top:0;">Tipo de protección</label>
+    <select id="${id}_tipo">${tipoOptions || '<option value="">Cargando catálogo...</option>'}</select>
+    <label>Artículo</label>
+    <select id="${id}_articulo"></select>
     <div class="row2">
       <div><label>Talla</label><select id="${id}_talla"></select></div>
       <div><label>Cantidad</label><input type="number" id="${id}_cantidad" value="1" min="1"></div>
     </div>`;
   document.getElementById('itemList').appendChild(div);
 
+  const tipoSel = div.querySelector(`#${id}_tipo`);
   const artSel = div.querySelector(`#${id}_articulo`);
   const tallaSel = div.querySelector(`#${id}_talla`);
   const tag = div.querySelector(`#${id}_tag`);
+
+  function refreshArticulos(){
+    const tipo = tipoSel.value;
+    const opciones = catalogoCache.filter(c => c.tipo_proteccion === tipo);
+    artSel.innerHTML = opciones.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('') || '<option value="">Sin artículos en este tipo</option>';
+    tag.textContent = tipo || '—';
+    refreshTallas();
+  }
   function refreshTallas(){
     const cat = catalogoCache.find(c => c.id === artSel.value);
-    tag.textContent = cat ? cat.tipo_proteccion : '—';
     const tallas = cat && cat.tallas ? cat.tallas : ['Única'];
     tallaSel.innerHTML = tallas.map(t => `<option>${t}</option>`).join('');
   }
+  tipoSel.addEventListener('change', refreshArticulos);
   artSel.addEventListener('change', refreshTallas);
-  refreshTallas();
+  refreshArticulos();
 }
 document.getElementById('addItemBtn').addEventListener('click', addItemRow);
 
@@ -709,40 +721,129 @@ function showToast(msg){
 }
 
 /* ======================= CATALOGO (panel maestro) ======================= */
+let catalogoAdminCache = [];
+let editandoCatId = null;
+
 async function cargarCatalogoAdmin(){
-  const box = document.getElementById('catalogoList');
   try {
     const snap = await getDocs(query(collection(db, 'catalogo_epp'), orderBy('tipo_proteccion')));
-    if (snap.empty) { box.innerHTML = 'Aún no hay artículos. Agrega el primero arriba.'; return; }
-    box.innerHTML = snap.docs.map(d => {
-      const c = d.data();
-      return `<div class="catalog-row">
-        <div class="catalog-info">
-          <div class="name">${c.nombre}</div>
-          <div class="meta">${c.tipo_proteccion} · tallas: ${(c.tallas||[]).join(', ')}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <div class="catalog-price">Q${(c.costo_unitario||0).toFixed(2)}</div>
-          <button class="remove-btn" data-delete-cat="${d.id}">Eliminar</button>
+    catalogoAdminCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderCatalogoAdmin();
+  } catch(e){ document.getElementById('catalogoList').innerHTML = 'Error al cargar catálogo.'; }
+}
+
+function renderCatalogoAdmin(){
+  const box = document.getElementById('catalogoList');
+  if (catalogoAdminCache.length === 0) { box.innerHTML = 'Aún no hay artículos. Agrega el primero arriba.'; return; }
+  box.innerHTML = catalogoAdminCache.map(c => {
+    if (editandoCatId === c.id) {
+      return `<div class="catalog-row" style="flex-direction:column;align-items:stretch;gap:8px;">
+        <div class="meta" style="margin-bottom:2px;">${c.tipo_proteccion} · tallas: ${(c.tallas||[]).join(', ')}</div>
+        <input type="text" id="editNombre_${c.id}" value="${c.nombre.replace(/"/g,'&quot;')}">
+        <input type="number" id="editCosto_${c.id}" value="${c.costo_unitario||0}" step="0.01">
+        <div style="display:flex;gap:8px;">
+          <button class="add-item" style="flex:1;" data-save-cat="${c.id}">Guardar</button>
+          <button class="btn-secondary" style="flex:1;border:none;border-radius:10px;padding:10px;font-family:'Inter',sans-serif;font-weight:600;" data-cancel-cat="${c.id}">Cancelar</button>
         </div>
       </div>`;
-    }).join('');
-  } catch(e){ box.innerHTML = 'Error al cargar catálogo.'; }
+    }
+    return `<div class="catalog-row">
+      <div class="catalog-info">
+        <div class="name">${c.nombre}</div>
+        <div class="meta">${c.tipo_proteccion} · tallas: ${(c.tallas||[]).join(', ')}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="catalog-price">Q${(c.costo_unitario||0).toFixed(2)}</div>
+        <button class="remove-btn" data-edit-cat="${c.id}" style="color:var(--blue-dark);">Editar</button>
+        <button class="remove-btn" data-delete-cat="${c.id}">Eliminar</button>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 document.getElementById('catalogoList').addEventListener('click', async (e) => {
-  const id = e.target.dataset.deleteCat;
-  if (!id) return;
-  if (!confirm('¿Eliminar este artículo del catálogo? Esta acción no se puede deshacer.')) return;
-  try {
-    await deleteDoc(doc(db, 'catalogo_epp', id));
-    showToast('✓ Artículo eliminado');
-    cargarCatalogoAdmin();
-    cargarCatalogoParaItems();
-  } catch(err) {
-    showToast('Error al eliminar: ' + err.message);
+  const editId = e.target.dataset.editCat;
+  const cancelId = e.target.dataset.cancelCat;
+  const saveId = e.target.dataset.saveCat;
+  const deleteId = e.target.dataset.deleteCat;
+
+  if (editId) { editandoCatId = editId; renderCatalogoAdmin(); return; }
+  if (cancelId) { editandoCatId = null; renderCatalogoAdmin(); return; }
+
+  if (saveId) {
+    const nuevoNombre = document.getElementById(`editNombre_${saveId}`).value.trim();
+    const nuevoCosto = parseFloat(document.getElementById(`editCosto_${saveId}`).value || '0');
+    if (!nuevoNombre) return showToast('El nombre no puede quedar vacío');
+    const item = catalogoAdminCache.find(c => c.id === saveId);
+    const nombreAnterior = item.nombre;
+    const { id: _omit, ...itemSinId } = item;
+
+    try {
+      await setDoc(doc(db, 'catalogo_epp', saveId), { ...itemSinId, nombre: nuevoNombre, costo_unitario: nuevoCosto });
+      editandoCatId = null;
+      showToast('✓ Artículo actualizado');
+      await cargarCatalogoAdmin();
+      cargarCatalogoParaItems();
+
+      if (confirm(`¿Aplicar Q${nuevoCosto.toFixed(2)} también a las entregas ya registradas de "${nombreAnterior}"? Esto actualiza el costo histórico.`)) {
+        await aplicarPrecioAEntregasExistentes(nombreAnterior, nuevoNombre, nuevoCosto);
+      }
+    } catch(err) {
+      showToast('Error al guardar: ' + err.message);
+    }
+    return;
+  }
+
+  if (deleteId) {
+    if (!confirm('¿Eliminar este artículo del catálogo? Esta acción no se puede deshacer.')) return;
+    try {
+      await deleteDoc(doc(db, 'catalogo_epp', deleteId));
+      showToast('✓ Artículo eliminado');
+      cargarCatalogoAdmin();
+      cargarCatalogoParaItems();
+    } catch(err) {
+      showToast('Error al eliminar: ' + err.message);
+    }
   }
 });
+
+/* ======================= APLICAR PRECIO A ENTREGAS YA REGISTRADAS ======================= */
+async function aplicarPrecioAEntregasExistentes(nombreAnterior, nombreNuevo, costoNuevo){
+  showToast('Actualizando entregas ya registradas...');
+  try {
+    const snap = await getDocs(collection(db, 'movimientos'));
+    const clave = nombreAnterior.trim().toLowerCase();
+    let batch = writeBatch(db);
+    let opCount = 0;
+    let actualizados = 0;
+
+    for (const docSnap of snap.docs) {
+      const m = docSnap.data();
+      let cambio = false;
+      const items = (m.items || []).map(it => {
+        if ((it.nombre||'').trim().toLowerCase() === clave) {
+          cambio = true;
+          return { ...it, nombre: nombreNuevo, costo_unitario: costoNuevo };
+        }
+        return it;
+      });
+      if (cambio) {
+        const costoTotal = items.reduce((s,it) => s + (it.costo_unitario * it.cantidad), 0);
+        batch.update(docSnap.ref, { items, costo_total: costoTotal });
+        opCount++; actualizados++;
+        if (opCount >= 400) { await batch.commit(); batch = writeBatch(db); opCount = 0; }
+      }
+    }
+    if (opCount > 0) await batch.commit();
+
+    showToast(`✓ ${actualizados} entregas actualizadas con el nuevo costo`);
+    await cargarMovimientos();
+    renderPanelCostos();
+  } catch(e) {
+    console.error(e);
+    showToast('Error al actualizar entregas: ' + e.message);
+  }
+}
 
 document.getElementById('addCatBtn').addEventListener('click', async () => {
   const nombre = document.getElementById('catNombre').value.trim();
@@ -1072,8 +1173,8 @@ async function inicializarPanel(){
   anioSel.value = anioActual.toString();
   document.getElementById('panelMesSel').value = (new Date().getMonth()+1).toString();
 
-  anioSel.addEventListener('change', () => renderPanelCostos());
-  document.getElementById('panelMesSel').addEventListener('change', () => renderPanelCostos());
+  anioSel.addEventListener('change', () => { renderPanelCostos(); renderPanelRecurrencia(); });
+  document.getElementById('panelMesSel').addEventListener('change', () => { renderPanelCostos(); renderPanelRecurrencia(); });
 
   renderPanelCostos();
   renderPanelRecurrencia();
@@ -1089,23 +1190,31 @@ async function cargarMovimientos(){
   }
 }
 
-function renderPanelCostos(){
-  if (!movimientosCache) return;
+function obtenerFiltroPeriodo(){
   const anioSel = document.getElementById('panelAnio').value; // "todos" o "2026"
   const mesSel = document.getElementById('panelMesSel').value; // "todos" o "1".."12"
-
-  const label = document.getElementById('panelTotalLabel');
-  if (anioSel === 'todos') label.textContent = 'Total histórico (todos los años)';
-  else if (mesSel === 'todos') label.textContent = `Total del año ${anioSel}`;
-  else label.textContent = `Total de ${document.getElementById('panelMesSel').selectedOptions[0].text} ${anioSel}`;
-
-  const delMes = movimientosCache.filter(m => {
+  return { anioSel, mesSel };
+}
+function filtrarPorPeriodo(lista, anioSel, mesSel){
+  return lista.filter(m => {
     if (!m.fecha || !m.fecha.toDate) return false;
     const f = m.fecha.toDate();
     if (anioSel !== 'todos' && f.getFullYear().toString() !== anioSel) return false;
     if (anioSel !== 'todos' && mesSel !== 'todos' && (f.getMonth()+1).toString() !== mesSel) return false;
     return true;
   });
+}
+
+function renderPanelCostos(){
+  if (!movimientosCache) return;
+  const { anioSel, mesSel } = obtenerFiltroPeriodo();
+
+  const label = document.getElementById('panelTotalLabel');
+  if (anioSel === 'todos') label.textContent = 'Total histórico (todos los años)';
+  else if (mesSel === 'todos') label.textContent = `Total del año ${anioSel}`;
+  else label.textContent = `Total de ${document.getElementById('panelMesSel').selectedOptions[0].text} ${anioSel}`;
+
+  const delMes = filtrarPorPeriodo(movimientosCache, anioSel, mesSel);
 
   const total = delMes.reduce((sum, m) => sum + (m.costo_total || 0), 0);
   document.getElementById('panelTotalMes').textContent = `Q${total.toFixed(2)}`;
@@ -1211,8 +1320,11 @@ document.getElementById('panelListado').addEventListener('click', async (e) => {
 
 function renderPanelRecurrencia(){
   if (!movimientosCache) return;
+  const { anioSel, mesSel } = obtenerFiltroPeriodo();
+  const delPeriodo = filtrarPorPeriodo(movimientosCache, anioSel, mesSel);
+
   const conteos = {}; // key -> {nombre, area, count, motivos:{}}
-  movimientosCache.forEach(m => {
+  delPeriodo.forEach(m => {
     if (!m.motivo || !m.motivo.toLowerCase().startsWith('reposición')) return;
     if (m.tipo_persona !== 'planta' || !m.trabajador) return;
     const key = m.trabajador.id_trabajador;
