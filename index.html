@@ -9,7 +9,7 @@
 
 <!-- Firebase (modular SDK — required to connect to the named "us-central" Firestore database) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 
 <style>
   :root{
@@ -1470,7 +1470,8 @@ function renderDashboard(){
   // --- Motivo (doughnut) ---
   const porMotivo = {};
   filtrados.forEach(m => { const mo = m.motivo || 'Sin motivo'; porMotivo[mo] = (porMotivo[mo]||0)+1; });
-  dibujarDoughnut('chartMotivo', chartMotivoInst, porMotivo, (i)=>chartMotivoInst=i);
+  try { dibujarDoughnut('chartMotivo', chartMotivoInst, porMotivo, (i)=>chartMotivoInst=i); }
+  catch(e) { console.error('Error dibujando chart Motivo', e); }
 
   // --- EPP por área (bar) ---
   const porArea = {};
@@ -1480,7 +1481,8 @@ function renderDashboard(){
     const cant = (m.items||[]).reduce((s,it)=>s+(it.cantidad||0),0);
     porArea[a] = (porArea[a]||0) + cant;
   });
-  dibujarBar('chartArea', chartAreaInst, porArea, (i)=>chartAreaInst=i);
+  try { dibujarBar('chartArea', chartAreaInst, porArea, (i)=>chartAreaInst=i); }
+  catch(e) { console.error('Error dibujando chart Área', e); }
 
   // --- Top colaboradores ---
   const porColaborador = {};
@@ -1521,10 +1523,12 @@ function renderDashboard(){
     const t = it.tipo_proteccion || 'Sin tipo';
     porTipoQ[t] = (porTipoQ[t]||0) + (it.cantidad||0);
   }));
-  dibujarDoughnut('chartTipo', chartTipoInst, porTipoQ, (i)=>chartTipoInst=i);
+  try { dibujarDoughnut('chartTipo', chartTipoInst, porTipoQ, (i)=>chartTipoInst=i); }
+  catch(e) { console.error('Error dibujando chart Tipo', e); }
 }
 
 function dibujarDoughnut(canvasId, instanciaPrevia, datos, guardarInstancia){
+  if (typeof Chart === 'undefined') { showToast('No se pudo cargar la librería de gráficas (revisa tu conexión)'); throw new Error('Chart.js no disponible'); }
   if (instanciaPrevia) instanciaPrevia.destroy();
   const ctx = document.getElementById(canvasId).getContext('2d');
   const entradas = Object.entries(datos);
