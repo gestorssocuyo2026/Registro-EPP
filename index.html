@@ -147,6 +147,7 @@
 
   <div class="tabs">
     <div class="tab active" id="tabRegistro">Registrar</div>
+    <div class="tab" id="tabPrestado">EPP Prestado</div>
     <div class="tab hidden" id="tabCatalogo">Catálogo</div>
     <div class="tab hidden" id="tabPersonal">Datos</div>
     <div class="tab hidden" id="tabPanel">Panel</div>
@@ -176,7 +177,8 @@
 
       <div id="terceroFields" class="hidden">
         <label>Nombre completo</label>
-        <input type="text" id="terceroNombre" placeholder="Nombre del tercero">
+        <input type="text" id="terceroNombre" placeholder="Nombre del tercero" autocomplete="off">
+        <div id="terceroResults" style="font-size:12.5px;color:var(--muted);margin-top:4px;"></div>
         <label>Empresa / motivo de visita</label>
         <input type="text" id="terceroEmpresa" placeholder="Ej. Contratista eléctrico">
         <label>Foto de documento de identificación</label>
@@ -204,6 +206,8 @@
       <div class="card-title"><span class="badge-num">3</span> Equipo a entregar</div>
       <div id="itemList"></div>
       <button class="add-item" id="addItemBtn">+ Agregar artículo</button>
+      <label>Foto del equipo entregado (opcional)</label>
+      <input type="file" id="eppFoto" accept="image/*" capture="environment">
     </div>
 
     <div class="card">
@@ -225,6 +229,21 @@
       </div>
     </div>
 
+  </div>
+
+  <!-- ---------- EPP PRESTADO (control de préstamos) ---------- -->
+  <div class="content hidden" id="viewPrestado">
+    <div class="card">
+      <div class="card-title">📦 Préstamos activos</div>
+      <p style="font-size:12.5px;color:var(--muted);margin-top:0;line-height:1.5;">
+        Equipo entregado en préstamo que aún no ha sido devuelto. Marca la devolución cuando el trabajador lo entregue de vuelta.
+      </p>
+      <div id="prestamosActivos">Cargando...</div>
+    </div>
+    <div class="card">
+      <div class="card-title">✓ Devueltos recientemente</div>
+      <div id="prestamosDevueltos">Cargando...</div>
+    </div>
   </div>
 
   <!-- ---------- CATALOGO (solo maestro) ---------- -->
@@ -407,8 +426,8 @@ import {
   getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore, collection, doc, getDoc, getDocs, addDoc, setDoc, deleteDoc,
-  writeBatch, query, orderBy, serverTimestamp, Timestamp
+  getFirestore, collection, doc, getDoc, getDocs, addDoc, setDoc, deleteDoc, updateDoc,
+  writeBatch, query, orderBy, where, serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ======================= FIREBASE INIT ======================= */
@@ -471,6 +490,8 @@ onAuthStateChanged(auth, async (user) => {
     }
     cargarPersonal();
     cargarCatalogoParaItems();
+    cargarTerceros();
+    cargarPrestamos();
   } else {
     currentUser = null;
     document.getElementById('loginScreen').classList.remove('hidden');
@@ -480,6 +501,7 @@ onAuthStateChanged(auth, async (user) => {
 
 /* ======================= TABS ======================= */
 document.getElementById('tabRegistro').addEventListener('click', () => switchTab('registro'));
+document.getElementById('tabPrestado').addEventListener('click', () => { switchTab('prestado'); cargarPrestamos(); });
 document.getElementById('tabCatalogo').addEventListener('click', () => switchTab('catalogo'));
 document.getElementById('tabPersonal').addEventListener('click', () => switchTab('personal'));
 document.getElementById('tabPanel').addEventListener('click', () => switchTab('panel'));
@@ -489,11 +511,13 @@ document.getElementById('tabDashboard').addEventListener('click', () => {
 });
 function switchTab(tab){
   document.getElementById('tabRegistro').classList.toggle('active', tab==='registro');
+  document.getElementById('tabPrestado').classList.toggle('active', tab==='prestado');
   document.getElementById('tabCatalogo').classList.toggle('active', tab==='catalogo');
   document.getElementById('tabPersonal').classList.toggle('active', tab==='personal');
   document.getElementById('tabPanel').classList.toggle('active', tab==='panel');
   document.getElementById('tabDashboard').classList.toggle('active', tab==='dashboard');
   document.getElementById('viewRegistro').classList.toggle('hidden', tab!=='registro');
+  document.getElementById('viewPrestado').classList.toggle('hidden', tab!=='prestado');
   document.getElementById('viewCatalogo').classList.toggle('hidden', tab!=='catalogo');
   document.getElementById('viewPersonal').classList.toggle('hidden', tab!=='personal');
   document.getElementById('viewPanel').classList.toggle('hidden', tab!=='panel');
@@ -531,6 +555,44 @@ async function cargarPersonal(){
     personalCache = snap.docs.map(d => ({id: d.id, ...d.data()}));
   } catch(e){ console.error('Error cargando personal', e); }
 }
+
+let tercerosCache = [];
+async function cargarTerceros(){
+  try {
+    const snap = await getDocs(collection(db, 'terceros'));
+    tercerosCache = snap.docs.map(d => ({id: d.id, ...d.data()}));
+  } catch(e){ console.error('Error cargando terceros', e); }
+}
+function slugTercero(nombre){
+  return nombre.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+}
+document.getElementById('terceroNombre').addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase().trim();
+  const box = document.getElementById('terceroResults');
+  if (q.length < 2) { box.innerHTML = ''; return; }
+  const matches = tercerosCache.filter(t => (t.nombre||'').toLowerCase().includes(q)).slice(0,5);
+  box.innerHTML = matches.map(t =>
+    `<div style="padding:6px 4px;cursor:pointer;" data-tid="${t.id}">${t.nombre}${t.empresa ? ' — '+t.empresa : ''}</div>`
+  ).join('');
+  box.querySelectorAll('[data-tid]').forEach(el => {
+    el.addEventListener('click', () => {
+      const t = tercerosCache.find(x => x.id === el.dataset.tid);
+      document.getElementById('terceroNombre').value = t.nombre;
+      document.getElementById('terceroEmpresa').value = t.empresa || '';
+      box.innerHTML = '';
+    });
+  });
+});
+async function guardarTerceroSiEsNuevo(nombre, empresa){
+  const clave = slugTercero(nombre);
+  if (!clave) return;
+  const yaExiste = tercerosCache.some(t => t.id === clave);
+  try {
+    await setDoc(doc(db, 'terceros', clave), { nombre, empresa: empresa || '' }, { merge: true });
+    if (!yaExiste) tercerosCache.push({ id: clave, nombre, empresa });
+  } catch(e) { console.error('Error guardando tercero', e); }
+}
+
 document.getElementById('trabajadorSearch').addEventListener('input', (e) => {
   const q = e.target.value.toLowerCase().trim();
   const box = document.getElementById('trabajadorResults');
@@ -724,6 +786,12 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
       }
     }
 
+    let fotoEppBase64 = null;
+    const fotoEppFile = document.getElementById('eppFoto').files[0];
+    if (fotoEppFile) {
+      fotoEppBase64 = await compressImageToDataURL(fotoEppFile);
+    }
+
     const registro = {
       tipo_persona: tipoPersona,
       trabajador: tipoPersona === 'planta'
@@ -734,6 +802,7 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
       items: items,
       costo_total: items.reduce((sum,i) => sum + (i.costo_unitario * i.cantidad), 0),
       firma: firmaBase64,
+      foto_epp: fotoEppBase64,
       acepto_compromiso: true,
       registrado_por: currentUser.email,
       fecha: serverTimestamp(),
@@ -748,6 +817,9 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
     }
 
     await addDoc(collection(db, 'movimientos'), registro);
+    if (tipoPersona === 'tercero') {
+      await guardarTerceroSiEsNuevo(document.getElementById('terceroNombre').value.trim(), document.getElementById('terceroEmpresa').value.trim());
+    }
     showToast('✓ Entrega guardada correctamente');
     resetForm();
   } catch (e) {
@@ -766,6 +838,8 @@ function resetForm(){
   document.getElementById('terceroNombre').value = '';
   document.getElementById('terceroEmpresa').value = '';
   document.getElementById('terceroFoto').value = '';
+  document.getElementById('terceroResults').innerHTML = '';
+  document.getElementById('eppFoto').value = '';
   selectedTrabajador = null;
   document.getElementById('itemList').innerHTML = '';
   itemCount = 0;
@@ -782,6 +856,57 @@ function showToast(msg){
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2600);
 }
+
+/* ======================= EPP PRESTADO (control de préstamos) ======================= */
+async function cargarPrestamos(){
+  const boxActivos = document.getElementById('prestamosActivos');
+  const boxDevueltos = document.getElementById('prestamosDevueltos');
+  try {
+    const snap = await getDocs(query(collection(db, 'movimientos'), where('tipo_movimiento', '==', 'prestamo')));
+    const todos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const activos = todos.filter(m => m.estado === 'prestado')
+      .sort((a,b) => (b.fecha?.toDate?.()||0) - (a.fecha?.toDate?.()||0));
+    const devueltos = todos.filter(m => m.estado === 'devuelto')
+      .sort((a,b) => (b.fecha_devolucion?.toDate?.()||0) - (a.fecha_devolucion?.toDate?.()||0))
+      .slice(0, 20);
+
+    boxActivos.innerHTML = activos.length ? activos.map(m => renderFilaPrestamo(m, true)).join('') :
+      '<div style="font-size:12.5px;color:var(--muted);text-align:center;">Sin préstamos pendientes de devolución.</div>';
+    boxDevueltos.innerHTML = devueltos.length ? devueltos.map(m => renderFilaPrestamo(m, false)).join('') :
+      '<div style="font-size:12.5px;color:var(--muted);text-align:center;">Aún no hay devoluciones registradas.</div>';
+  } catch(e) {
+    console.error(e);
+    boxActivos.innerHTML = 'Error al cargar préstamos.';
+  }
+}
+
+function renderFilaPrestamo(m, activo){
+  const nombre = m.trabajador ? m.trabajador.nombre : '—';
+  const itemsTxt = (m.items||[]).map(it => `${it.nombre} (${it.cantidad})`).join(', ');
+  const fechaTxt = m.fecha && m.fecha.toDate ? m.fecha.toDate().toLocaleDateString('es-GT', {day:'2-digit', month:'short', year:'numeric'}) : '—';
+  const fechaDevTxt = m.fecha_devolucion && m.fecha_devolucion.toDate ? m.fecha_devolucion.toDate().toLocaleDateString('es-GT', {day:'2-digit', month:'short', year:'numeric'}) : '';
+  return `
+    <div class="catalog-row">
+      <div class="catalog-info">
+        <div class="name">${nombre}</div>
+        <div class="meta">${itemsTxt} · prestado: ${fechaTxt}${fechaDevTxt ? ' · devuelto: '+fechaDevTxt : ''}</div>
+      </div>
+      ${activo ? `<button class="add-item" style="flex:0 0 auto;padding:8px 12px;" data-devolver="${m.id}">Marcar devuelto</button>` : `<span style="color:var(--green);font-weight:700;font-size:12px;">✓</span>`}
+    </div>`;
+}
+
+document.getElementById('prestamosActivos').addEventListener('click', async (e) => {
+  const id = e.target.dataset.devolver;
+  if (!id) return;
+  if (!confirm('¿Confirmar que este equipo fue devuelto?')) return;
+  try {
+    await updateDoc(doc(db, 'movimientos', id), { estado: 'devuelto', fecha_devolucion: serverTimestamp() });
+    showToast('✓ Devolución registrada');
+    cargarPrestamos();
+  } catch(err) {
+    showToast('Error al registrar devolución: ' + err.message);
+  }
+});
 
 /* ======================= CATALOGO (panel maestro) ======================= */
 let catalogoAdminCache = [];
@@ -848,7 +973,7 @@ document.getElementById('catalogoList').addEventListener('click', async (e) => {
       await cargarCatalogoAdmin();
       cargarCatalogoParaItems();
 
-      if (confirm(`¿Aplicar Q${nuevoCosto.toFixed(2)} también a las entregas ya registradas de "${nombreAnterior}"? Esto actualiza el costo histórico.`)) {
+      if (confirm(`¿Aplicar también a las entregas ya registradas de "${nombreAnterior}"?\n\nEsto actualiza esas entregas para que usen el nuevo nombre ("${nuevoNombre}") y el nuevo precio (Q${nuevoCosto.toFixed(2)}).`)) {
         await aplicarPrecioAEntregasExistentes(nombreAnterior, nuevoNombre, nuevoCosto);
       }
     } catch(err) {
